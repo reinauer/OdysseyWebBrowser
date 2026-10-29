@@ -1,5 +1,10 @@
 # OdysseyWebBrowser
 
+The `AmigaOS3` branch starts from AmigaLabs Odyssey 3.2.2. See
+[the AmigaOS 3 port notes](README.AmigaOS3.md) for the branch comparison,
+imported fixes, platform checks and remaining porting work. The build
+instructions below describe the existing AROS/OS4 ports, not an OS3 build.
+
 Notes about branches:
 
 * webkit  - branch that only contains original WebKit codes at certain revisions/releases. Source changes between versions/releases are squashed into in (most cases) one commit.
