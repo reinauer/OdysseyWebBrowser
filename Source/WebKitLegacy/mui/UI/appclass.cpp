@@ -1206,7 +1206,8 @@ DEFDISP
         free(n);
     }
 
-    FreeDiskObject(data->diskobject);
+    if (data->diskobject)
+        FreeDiskObject(data->diskobject);
 
     /* Write persistant config file */
     WriteConfigFile("PROGDIR:Conf/misc.prefs", &data->appsettings);
@@ -2552,7 +2553,7 @@ void prefs_update(Object *obj, struct Data *data)
     sharedPreferences->setLocalStorageEnabled((bool) getv(data->prefswin, MA_OWBApp_EnableLocalStorage));
 
     /* JavaScript JIT */
-    if (FindToolType(data->diskobject->do_ToolTypes, "NO_JSC_JIT"))
+    if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "NO_JSC_JIT"))
     {
         JSC::Options::useJIT()              = false;
         JSC::Options::useBaselineJIT()      = false;
@@ -2573,9 +2574,9 @@ void prefs_update(Object *obj, struct Data *data)
     /* Concurrent JS slows down DFG by 20% and FTL by 50%. Due to single core under AROS? */
     JSC::Options::useConcurrentJIT()    = false;
 
-    if (FindToolType(data->diskobject->do_ToolTypes, "FTL"))
+    if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "FTL"))
         JSC::Options::useFTLJIT() = true;
-    if (FindToolType(data->diskobject->do_ToolTypes, "CONCURRENT_JIT"))
+    if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "CONCURRENT_JIT"))
         JSC::Options::useConcurrentJIT() = true;
 
 
@@ -2583,7 +2584,7 @@ void prefs_update(Object *obj, struct Data *data)
     /* Force full collection */
     JSC::Options::useGenerationalGC() = true;
 
-    if (FindToolType(data->diskobject->do_ToolTypes, "MSE"))
+    if (data->diskobject && FindToolType(data->diskobject->do_ToolTypes, "MSE"))
         sharedPreferences->setMediaSourceEnabled(true);
     else
         sharedPreferences->setMediaSourceEnabled(false);
