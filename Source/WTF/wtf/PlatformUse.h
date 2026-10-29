@@ -131,7 +131,7 @@
 #define USE_ACCELERATE 1
 #endif
 
-#if OS(WINDOWS) || OS(AROS) || OS(MORPHOS) || OS(AMIGAOS)
+#if OS(WINDOWS) || OS(AROS) || OS(MORPHOS) || OS(AMIGAOS) || OS(AMIGAOS3)
 #define USE_SYSTEM_MALLOC 1
 #endif
 

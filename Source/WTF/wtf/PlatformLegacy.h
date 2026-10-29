@@ -72,7 +72,7 @@
 #endif
 #elif OS(WINDOWS)
 #define WTF_PLATFORM_WIN 1
-#elif OS(AROS) || OS(AMIGAOS)
+#elif OS(AROS) || OS(AMIGAOS) || OS(AMIGAOS3)
 #define WTF_PLATFORM_MUI 1
 #endif
 

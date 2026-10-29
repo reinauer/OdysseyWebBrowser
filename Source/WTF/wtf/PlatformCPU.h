@@ -35,6 +35,12 @@
 /* ==== CPU() - the target CPU architecture ==== */
 /* CPU(KNOWN) becomes true if we explicitly support a target CPU. */
 
+/* CPU(M68K) - Motorola 68000 family */
+#if defined(__m68k__) || defined(__mc68000__)
+#define WTF_CPU_M68K 1
+#define WTF_CPU_KNOWN 1
+#endif
+
 /* CPU(MIPS) - MIPS 32-bit and 64-bit */
 #if (defined(mips) || defined(__mips__) || defined(MIPS) || defined(_MIPS_) || defined(__mips64))
 #if defined(_ABI64) && (_MIPS_SIM == _ABI64)
@@ -302,7 +308,7 @@ private:
 #define WTF_CPU_UNKNOWN 1
 #endif
 
-#if CPU(ARM) || CPU(MIPS) || CPU(UNKNOWN)
+#if CPU(ARM) || CPU(MIPS) || CPU(M68K) || CPU(UNKNOWN)
 #define WTF_CPU_NEEDS_ALIGNED_ACCESS 1
 #endif
 

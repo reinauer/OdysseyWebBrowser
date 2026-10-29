@@ -128,7 +128,12 @@
 #define WTF_OS_MORPHOS 1
 #endif
 
-/* OS(AMIGAOS) */
+/* OS(AMIGAOS3) - classic AmigaOS, separate from the OS4 API paths. */
+#if defined(__amigaos3__) || (CPU(M68K) && (defined(__amigaos__) || defined(__amiga__)) && !defined(__AROS__) && !defined(__MORPHOS__) && !defined(__amigaos4__))
+#define WTF_OS_AMIGAOS3 1
+#endif
+
+/* OS(AMIGAOS) - existing AmigaOS 4 port */
 #if defined(__amigaos4__)
 #define WTF_OS_AMIGAOS 1
 #endif
