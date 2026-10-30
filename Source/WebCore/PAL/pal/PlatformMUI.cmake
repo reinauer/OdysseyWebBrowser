@@ -4,3 +4,6 @@ list(APPEND PAL_SOURCES
     system/mui/SoundMorphOS.cpp
     system/ClockGeneric.cpp
 )
+if (AmigaOS3)
+    list(APPEND PAL_LIBRARIES AmigaOS3::AmiSSL)
+endif ()

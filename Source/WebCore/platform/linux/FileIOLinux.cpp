@@ -38,7 +38,7 @@
 #if PLATFORM(MUI)
 #include <dos/dos.h>
 #include <proto/dos.h>
-#if !OS(AROS) && !OS(AMIGAOS)
+#if !OS(AROS) && !OS(AMIGAOS) && !OS(AMIGAOS3)
 #include <proto/asyncio.h>
 #endif
 #include <clib/debug_protos.h>
@@ -61,7 +61,7 @@ OWBFile::~OWBFile()
 	D(kprintf("[File] ~File() OK\n"));
 }
 
-#if !OS(AROS) && !OS(AMIGAOS)
+#if !OS(AROS) && !OS(AMIGAOS) && !OS(AMIGAOS3)
 int OWBFile::open(char openType)
 {
 	struct AsyncFile *fd = 0;
@@ -198,16 +198,14 @@ int OWBFile::getSize()
 #else
 int OWBFile::open(char openType)
 {
-    char name[PATH_MAX];
-
-    stccpy(name, m_filePath.latin1().data(), sizeof(name));
+    auto name = m_filePath.latin1();
 
     if (openType == 'w')
-        m_fd = ::fopen(name, "w");
+        m_fd = ::fopen(name.data(), "w");
     else if (openType == 'r')
-        m_fd = ::fopen(name, "r");
+        m_fd = ::fopen(name.data(), "r");
     else if (openType == 'a')
-        m_fd = ::fopen(name, "a");
+        m_fd = ::fopen(name.data(), "a");
 
     if (m_fd) return 0;
 

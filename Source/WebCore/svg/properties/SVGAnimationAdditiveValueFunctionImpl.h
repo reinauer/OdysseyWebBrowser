@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include <math.h>
+
 #include "Color.h"
 #include "FloatRect.h"
 #include "SVGAngleValue.h"
@@ -91,7 +93,7 @@ public:
         float blue = Base::animate(progress, repeatCount, simpleFrom.blue, simpleTo.blue, simpleToAtEndOfDuration.blue, simpleAnimated.blue);
         float alpha = Base::animate(progress, repeatCount, simpleFrom.alpha, simpleTo.alpha, simpleToAtEndOfDuration.alpha, simpleAnimated.alpha);
         
-        animated = makeFromComponentsClamping<SRGBA<uint8_t>>(std::lround(red), std::lround(green), std::lround(blue), std::lround(alpha));
+        animated = makeFromComponentsClamping<SRGBA<uint8_t>>(::lround(red), ::lround(green), ::lround(blue), ::lround(alpha));
     }
 
     std::optional<float> calculateDistance(SVGElement&, const String& from, const String& to) const override

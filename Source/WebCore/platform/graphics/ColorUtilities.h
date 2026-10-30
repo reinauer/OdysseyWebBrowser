@@ -70,7 +70,7 @@ constexpr uint16_t fastDivideBy255(uint16_t);
 
 inline uint8_t convertPrescaledSRGBAFloatToSRGBAByte(float value)
 {
-    return std::clamp(std::lround(value), 0l, 255l);
+    return std::clamp(::lround(value), 0l, 255l);
 }
 
 template<> constexpr uint8_t convertByteAlphaTo<uint8_t>(uint8_t value)
@@ -85,7 +85,7 @@ template<> constexpr float convertByteAlphaTo<float>(uint8_t value)
 
 template<> inline uint8_t convertFloatAlphaTo<uint8_t>(float value)
 {
-    return std::clamp(std::lround(value * 255.0f), 0l, 255l);
+    return std::clamp(::lround(value * 255.0f), 0l, 255l);
 }
 
 template<> inline float convertFloatAlphaTo<float>(float value)

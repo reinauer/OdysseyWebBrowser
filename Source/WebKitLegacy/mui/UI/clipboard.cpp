@@ -28,8 +28,11 @@
 
 #include <WebCore/Pasteboard.h>
 
-#include "clipboard.h"
+#include "OdysseyClipboard.h"
 #include "utils.h"
+#if OS(AMIGAOS3)
+#include "AmigaOS3ClipboardNotification.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,6 +105,9 @@ bool copyTextToClipboard(char *text, bool utf8)
         }
     }
 
+#if OS(AMIGAOS3)
+    processClipboardNotifications();
+#endif
     return copied;
 }
 
@@ -587,6 +593,9 @@ bool copyImageToClipboard(ChkImage *img)
         FreeIFF(MyHandle);
     }
 
+#if OS(AMIGAOS3)
+    processClipboardNotifications();
+#endif
     return result;
 }
 
@@ -661,17 +670,36 @@ static void clipboardClose(struct IOClipReq *ior)
 
 static struct Hook changeHook;
 static struct IOClipReq *clipReq;
+#if OS(AMIGAOS3)
+static AmigaOS3ClipboardNotification clipboardNotification;
+static MUI_InputHandlerNode clipboardInputHandler;
+static Object* clipboardApplication;
 
+void processClipboardNotifications()
+{
+    if (clipboardNotification.takePending())
+        Pasteboard::createForGlobalSelection()->clear();
+}
+#endif
+
+#if !OS(AMIGAOS3)
 ULONG clipHook (struct Hook * h, VOID * o, struct ClipHookMsg * msg)
 {
         Pasteboard::createForGlobalSelection()->clear();
     //Pasteboard::generalPasteboard()->clear();
     return (0);
 }
+#endif
 
 bool installClipboardMonitor (void)
 {
     struct IOClipReq *clipIO;
+#if OS(AMIGAOS3)
+    if (clipReq)
+        return clipboardApplication != nullptr;
+    if (!app || !clipboardNotification.start())
+        return false;
+#endif
 
     /* Open clipboard unit 0 */
 
@@ -687,6 +715,8 @@ bool installClipboardMonitor (void)
         changeHook.h_Entry = (HOOKFUNC)clipHook;
         changeHook.h_SubEntry = 0;
         changeHook.h_Data = 0;
+#elif OS(AMIGAOS3)
+        clipboardNotification.configureHook(changeHook);
 #else
         changeHook.h_Entry = (APTR)HookEntry;
         changeHook.h_SubEntry = (APTR) clipHook;
@@ -697,30 +727,56 @@ bool installClipboardMonitor (void)
         if (DoIO ((struct IORequest *) clipIO))
         {
             printf ("Unable to set clipboard hook\n");
+#if OS(AMIGAOS3)
+            clipboardClose(clipIO);
+            clipboardNotification.stop();
+            return false;
+#endif
         }
 
         clipReq = clipIO;
+#if OS(AMIGAOS3)
+        clipboardInputHandler.ihn_Object = app;
+        clipboardInputHandler.ihn_Method = MM_OWBApp_ClipboardChanged;
+        clipboardInputHandler.ihn_Signals = clipboardNotification.signalMask();
+        clipboardInputHandler.ihn_Flags = 0;
+        clipboardApplication = app;
+        DoMethod(app, MUIM_Application_AddInputHandler, &clipboardInputHandler);
+#endif
     }
 
+#if OS(AMIGAOS3)
+    if (!clipReq)
+        clipboardNotification.stop();
+#endif
     return clipReq != NULL;
 }
 
 void removeClipboardMonitor (void)
 {
-    if(clipReq)
-    {
-        /* Fill out the IO request */
-        clipReq->io_Data = (char *) &changeHook;
+    if (clipReq) {
+        clipReq->io_Data = (char*)&changeHook;
         clipReq->io_Length = 0;
         clipReq->io_Command = CBD_CHANGEHOOK;
-
-        /* Stop the hook */
-        if (DoIO ((struct IORequest *) clipReq))
-        {
-            printf ("Unable to stop clipboard hook\n");
+        // Removal waits for the device's change semaphore, so no callback
+        // using this hook remains in flight when DoIO returns successfully.
+        if (DoIO((struct IORequest*)clipReq)) {
+            printf("Unable to stop clipboard hook\n");
+#if !OS(AMIGAOS3)
+            clipboardClose(clipReq);
+            clipReq = nullptr;
+#endif
+            // On OS3 retain the inert static hook/request for a retry.
+        } else {
+            clipboardClose(clipReq);
+            clipReq = nullptr;
         }
-
-        clipboardClose(clipReq);
-        clipReq = NULL;
     }
+#if OS(AMIGAOS3)
+    if (clipboardApplication) {
+        DoMethod(clipboardApplication, MUIM_Application_RemInputHandler, &clipboardInputHandler);
+        clipboardApplication = nullptr;
+    }
+    clipboardNotification.stop();
+#endif
 }

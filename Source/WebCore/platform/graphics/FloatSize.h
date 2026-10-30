@@ -128,7 +128,12 @@ public:
 
     float diagonalLength() const
     {
+#if OS(AMIGAOS3)
+        // SDK newlib exports hypot, but its C++ headers omit this overload.
+        return ::hypot(m_width, m_height);
+#else
         return std::hypot(m_width, m_height);
+#endif
     }
 
     float diagonalLengthSquared() const

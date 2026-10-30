@@ -85,7 +85,7 @@ namespace WTF {
 template<> struct DefaultHash<WebCore::ResourceCryptographicDigest> {
     static unsigned hash(const WebCore::ResourceCryptographicDigest& digest)
     {
-        return pairIntHash(intHash(static_cast<unsigned>(digest.algorithm)), StringHasher::computeHash(digest.value.data(), digest.value.size()));
+        return pairIntHash(intHash(static_cast<uint32_t>(digest.algorithm)), StringHasher::computeHash(digest.value.data(), digest.value.size()));
     }
     static bool equal(const WebCore::ResourceCryptographicDigest& a, const WebCore::ResourceCryptographicDigest& b)
     {

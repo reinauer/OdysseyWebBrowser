@@ -1,5 +1,5 @@
-#ifndef __CLIPBOARD_H__
-#define __CLIPBOARD_H__
+#ifndef ODYSSEY_UI_CLIPBOARD_H
+#define ODYSSEY_UI_CLIPBOARD_H
 
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
@@ -55,5 +55,8 @@ bool copyTextToClipboard(char *text, bool utf8);
 bool copyImageToClipboard(ChkImage *img);
 bool installClipboardMonitor(void);
 void removeClipboardMonitor(void);
+#if OS(AMIGAOS3)
+void processClipboardNotifications();
+#endif
 
 #endif

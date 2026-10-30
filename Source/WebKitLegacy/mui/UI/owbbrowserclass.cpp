@@ -113,7 +113,7 @@ extern "C"
 #endif
 #include <intuition/pointerclass.h>
 #include <graphics/rpattr.h>
-#include <devices/rawkeycodes.h>
+#include "OdysseyRawKeyCodes.h"
 #include <devices/inputevent.h>
 #if ENABLE(VIDEO) && !OS(AROS) && !OS(AMIGAOS)
 #include <proto/cgxvideo.h>
@@ -189,7 +189,7 @@ static __inline IPTR _CALLFUNC2(void (*func)(void), IPTR arg1, IPTR arg2)
 #define CALLFUNC2(f,a1,a2) _CALLFUNC2((void (*)(void))(f),(IPTR)(a1),(IPTR)(a2))
 #endif
 
-#if OS(AMIGAOS)
+#if OS(AMIGAOS) || OS(AMIGAOS3)
 static __inline IPTR _CALLFUNC1(IPTR (*func)(IPTR), IPTR arg1) { return func(arg1); }
 #define CALLFUNC1(f,a1) _CALLFUNC1((IPTR (*)(IPTR))(f),(IPTR)(a1))
 static __inline IPTR _CALLFUNC2(IPTR (*func)(IPTR,IPTR), IPTR arg1, IPTR arg2) { return func(arg1,arg2); }
@@ -731,7 +731,11 @@ static void doset(APTR obj, struct Data *data, struct TagItem *tags)
 
         case MA_OWBBrowser_Pointer:
         {
-#if !OS(AMIGAOS)
+#if OS(AMIGAOS3)
+            data->pointertype = tag->ti_Data;
+            set(obj, MUIA_PointerType, getv(app, MA_OWBApp_EnablePointers)
+                ? data->pointertype : MUIV_PointerType_Normal);
+#elif !OS(AMIGAOS)
             if(is_morphos2() && getv(app, MA_OWBApp_EnablePointers))
             {
                 if (data->pointertype != tag->ti_Data)
@@ -1901,7 +1905,10 @@ static void autoscroll_add(Object *obj, struct Data *data, IntuiMessage *im)
             DoMethod(_app(obj), MUIM_Application_AddInputHandler, (IPTR)&data->ihnode);
             data->autoscroll_added = TRUE;
         }
-#if OS(AMIGAOS)
+#if OS(AMIGAOS3)
+        set(obj, MUIA_PointerType, getv(app, MA_OWBApp_EnablePointers)
+            ? MUIV_PointerType_ScrollAll : MUIV_PointerType_Normal);
+#elif OS(AMIGAOS)
         set(_win(obj), MUIA_PointerType, MUIV_PointerType_ScrollAll);
 #endif          
 #if 0 // AROS: this is causing a crash
@@ -1921,7 +1928,10 @@ static void autoscroll_remove(Object *obj, struct Data *data)
             DoMethod(_app(obj), MUIM_Application_RemInputHandler, (IPTR)&data->ihnode);
             data->autoscroll_added = FALSE;
         }
-#if OS(AMIGAOS)
+#if OS(AMIGAOS3)
+        set(obj, MUIA_PointerType, getv(app, MA_OWBApp_EnablePointers)
+            ? data->pointertype : MUIV_PointerType_Normal);
+#elif OS(AMIGAOS)
         set(_win(obj), MUIA_PointerType, MUIV_PointerType_Normal);
 #endif         
 #if 0 // AROS: this is causing a crash
@@ -2120,7 +2130,9 @@ DEFMMETHOD(HandleEvent)
             {
                 data->mouse_inside = mouse_inside;
 
-#if !OS(AMIGAOS4)
+#if OS(AMIGAOS3)
+                // MUI chooses the pointer for the object under the mouse.
+#elif !OS(AMIGAOS4)
                 if(is_morphos2() && getv(app, MA_OWBApp_EnablePointers))
                 {
                     set(_window(obj), WA_PointerType, mouse_inside ? data->pointertype : POINTERTYPE_NORMAL);
@@ -2491,7 +2503,9 @@ DEFMMETHOD(HandleEvent)
             if (data->mouse_inside != mouse_inside)
             {
                 data->mouse_inside = mouse_inside;
-#if !OS(AMIGAOS)                
+#if OS(AMIGAOS3)
+                // MUI restores the surrounding area's pointer on exit.
+#elif !OS(AMIGAOS)
                 if(is_morphos2() && getv(app, MA_OWBApp_EnablePointers))
                 {
                     set(_window(obj), WA_PointerType, mouse_inside ? data->pointertype : POINTERTYPE_NORMAL);
@@ -3712,7 +3726,7 @@ DEFMMETHOD(DragFinish)
             IntPoint position(data->last_drag_position);
             DragData dragData((DataObjectMorphOS *) dataObject, position, position, (DragOperation) data->dragoperation);
             D(kprintf("dragExited\n"));
-            core(data->view->webView)->dragController().dragExited(&dragData);
+            core(data->view->webView)->dragController().dragExited(dragData);
         }
 #endif
 

@@ -39,7 +39,8 @@ struct SameSizeAsFontCascadeDescription {
     Vector<void*> vector2;
     AtomString string;
     AtomString string2;
-    int16_t fontSelectionRequest[3];
+    int16_t fontSelectionRequest[2];
+    std::optional<int16_t> fontSelectionSlope;
     float size;
     unsigned bitfields1;
     unsigned bitfields2 : 22;

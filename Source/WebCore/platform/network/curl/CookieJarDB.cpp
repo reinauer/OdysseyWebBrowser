@@ -40,7 +40,7 @@
 #include <wtf/text/StringConcatenateNumbers.h>
 
 #include <sys/stat.h>
-#if !OS(AMIGAOS)
+#if !OS(AMIGAOS) && !OS(AMIGAOS3)
 #include <aros/debug.h>
 #endif
 

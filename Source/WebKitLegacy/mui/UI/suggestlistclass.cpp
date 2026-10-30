@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <devices/rawkeycodes.h>
+#include "OdysseyRawKeyCodes.h"
 #include <proto/intuition.h>
 #include <clib/macros.h>
 

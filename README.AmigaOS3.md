@@ -102,8 +102,9 @@ fallback for compilers without `__amigaos3__`.
 Cherry-picks applied without conflicts. The MIME collection API and its
 callers were inspected against this tree. `git diff --check` passes for
 the branch changes. The native platform integration test below now adds
-emulator coverage. There is still no full browser build, JavaScript
-execution, page rendering, physical-hardware test or browser memory
+emulator coverage. Native JavaScript execution and collector stress now
+pass as described below. There is still no full browser build, page
+rendering, physical-hardware test or browser memory
 benchmark. The target-header check alone does not validate these layers.
 
 ## First native platform milestone
@@ -135,12 +136,14 @@ Implemented and compiled from real WTF sources:
   adjustments. Timer/library handles are local to each call for this
   initial implementation; persistent handles are a later optimization.
 
-Build the standalone native integration test (this does **not** build a
-browser executable):
+First build the pthread-enabled runtime with
+`python3 Tools/AmigaOS3/build-cxx-runtime.py`. Then build the standalone
+native integration tests (these do **not** build a browser executable):
 
 ```sh
 cmake -S Tools/AmigaOS3 -B build/amigaos3-platform \
   -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build build/amigaos3-platform -j4
 ```
@@ -177,42 +180,123 @@ an OS3.2 ROM and the local Zune68 library. It covers aligned/zero-size/
 overflow allocations, page alignment and zeroing, partial recommit,
 main/worker stack bounds and stack pointers, pthread create/join, timed
 condition waits, monotonic and wall-clock calls, and MUI object creation.
-This does not exercise browser UI callbacks, rendering or GC suspension.
+The expanded tests also cover saved Exec register contexts, two-byte GC
+root scanning, nested suspension, thread exit, and fixed-width arithmetic.
+The browser's `vapor.h` macros also pass native custom-class
+construction/disposal, method dispatch and `MUIM_CallHook` argument/return
+checks with Zune68. Further checks exercise the SDK HookEntry trampoline,
+superclass tag forwarding and MUI pointer-type selection. These component
+checks do not validate the complete browser UI.
 
-## Full browser configuration and remaining work
+## Runtime and dependency bring-up
 
-The browser can now be configured with the OS3 toolchain:
+The original GCC SDK runtime is single-threaded even though it includes a
+pthread archive. Native tests exposed shared `thread_local` storage and an
+unsynchronized MemMap heap. The port builds a separate pthread-enabled
+libstdc++ and emulated TLS implementation; it serializes the SDK allocator's
+four reentrant entry points with an allocation-free recursive Exec semaphore.
+The SDK installation is not modified. C++ runtime tests exercise TLS,
+static initialization, once, mutexes, conditions, shared/weak ownership,
+thread creation, sleeping and concurrent allocation. The SDK pthread
+implementation also needed stable thread records and initialized TLS key
+slots; creating another worker previously moved live cleanup-list sentinels.
+See [runtime build and validation](Tools/AmigaOS3/RUNTIME.md).
+
+OS3 thread snapshots use bounded `Forbid`/`Permit` regions while copying
+saved Exec stacks. They include integer registers saved by Exec and scan
+at two-byte strides, because m68k roots need not be four-byte aligned.
+Allocation and buffer growth occur after tasks resume. Interrupts remain
+enabled; other applications' task dispatch pauses during the copy. This
+needs latency measurement with real JavaScript workloads.
+
+ICU 62.2 is cross-built with its full big-endian data, matching the bundled
+headers. Normalization, collation, word breaking, formatting and concurrent
+locale-cache operations pass in the guest. See [ICU instructions](Tools/AmigaOS3/ICU.md).
+The graphics/XML stack has native coverage for Cairo pixels/PNG output,
+XML/XSLT, directory enumeration, file metadata/timestamps and record locks.
+Fontconfig discovery, FreeType loading, HarfBuzz shaping and Cairo glyph
+rendering also pass. See [dependency instructions](Tools/AmigaOS3/dependencies/README.md).
+SQLite transactions and cross-process rollback-journal locking pass on
+native RAM and FFS volumes. WinUAE's host-directory record-lock bug is
+documented in [the SQLite notes](Tools/AmigaOS3/dependencies/SQLite.md).
+AmiSSL 5.27 provides entropy through task-local library contexts; concurrent
+native random-byte requests pass without weakening the random source.
+The native curl/AmiSSL test passes verified HTTPS, rejects untrusted
+certificates and wrong hostnames, and repeats worker initialization and
+cleanup. See [network build and validation](Tools/AmigaOS3/CURL.md).
+Native keyboard, dead-key, wheel and charset conversion tests also pass;
+see [input support](Tools/AmigaOS3/KEYBOARD.md). Clipboard changes are
+deferred from the device callback to a MUI handler on the browser task.
+
+Build and stage dependencies with the selected runtime:
 
 ```sh
-cmake -S . -B build/amigaos3-browser \
-  -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
-  -DCMAKE_BUILD_TYPE=Release -DPORT=MUI \
-  -DAMIGAOS3_DEPENDENCY_ROOT=/path/to/m68k-dependencies
+python3 Tools/AmigaOS3/build-cxx-runtime.py
+python3 Tools/AmigaOS3/build-icu.py \
+  --cxx-runtime build/amigaos3-sdk/cxx-runtime
+python3 Tools/AmigaOS3/build-dependencies.py --smoke
+python3 Tools/AmigaOS3/build-curl.py --smoke
 ```
 
-This currently **stops at missing ICU >= 61.2** (headers and the data,
-i18n and uc libraries) in the installed SDK. The OS3 path resolves real
-target dependencies and does not synthesize AROS library paths or accept
-host libraries. An empty framework-property CMake parsing error encountered
-during bring-up was also corrected.
+The engine-only build isolates JavaScriptCore from the MUI browser frontend:
 
-Next work:
+```sh
+cmake -S . -B build/amigaos3-jsc \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime" \
+  -DAMIGAOS3_DEPENDENCY_ROOT="$PWD/build/amigaos3-sdk" \
+  -DCMAKE_BUILD_TYPE=Release -DPORT=MUI -DAMIGAOS3_JSC_ONLY=ON
+cmake --build build/amigaos3-jsc -j4
+```
 
-1. Build/stage m68k ICU, then the remaining target dependencies (Cairo,
-   Fontconfig, curl/TLS, SQLite, XML/XSLT, HarfBuzz, image codecs and PSL).
-   Check SDK-supplied libraries against the selected CPU and C runtime.
-2. Complete the WTF thread backend. The SDK pthread smoke passes, but the
-   existing `ThreadingPOSIX.cpp` still needs its OS3 signal/suspension,
-   register capture and GC coordination paths. Audit atomics and TLS too.
-   Do not equate basic pthread operation with working WebKit threading.
-3. Port filesystem and CPU-time services and remaining low-level APIs;
-   compile and execute the C-loop JavaScriptCore on m68k.
-4. Port browser library startup, MUI callbacks/hooks, DOS/graphics,
-   clipboard, sockets and character conversion. Classify each OS4-specific
-   API before sharing it with OS3. Establish an OS3 optional-feature policy
-   separately from OS4 multimedia/GPU support.
-5. Bring up local HTML, then network browsing; measure resource usage on
-   emulated and physical systems before choosing resource limits.
+The complete WTF and JavaScriptCore archives compile and the native `jsc`
+shell runs. The script in `Tools/AmigaOS3/jsc-test.js` passed 2,142 checks
+on the OS3.2 guest, including signed/unsigned boundaries, Float32 rounding,
+IEEE overflow/NaN propagation, BigInt, typed-array byte order, Unicode
+regular expressions, ICU formatting
+and retained closures across 32 explicit garbage collections. Evidence is
+in `build/amigaos3-jsc-ieee-final/output.txt` and its adjacent input
+hash manifest. This is an engine integration test, not exhaustive GC proof.
+
+JavaScriptCore's precise allocations now accommodate the SDK's four-byte
+malloc alignment while preserving the engine's 16-byte header alignment
+and tagged cell addresses. A separate native test passed 11,095 checks
+covering allocation residues, growth, shrinkage, failure and lower-tier
+reuse. The runtime overlay also replaces defective SDK numeric conversion
+and double-arithmetic helpers with the actual GCC implementations. Native
+math tests cover rounding, overflow, infinity, NaN and concurrent arithmetic.
+See
+[runtime details](Tools/AmigaOS3/RUNTIME.md).
+
+Run the engine test with an installed AmiSSL 5.27 runtime in the fixture:
+
+```sh
+python3 Tools/AmigaOS3/run-platform-test.py \
+  --system /path/to/installed-amigaos3-system \
+  --rom /path/to/matching-kickstart.rom --emulator /path/to/winuae \
+  --binary build/amigaos3-jsc/bin/jsc --script Tools/AmigaOS3/jsc-test.js \
+  --stack 1048576 --z3-memory 256 \
+  --success-marker 'Odyssey JSC test: 0 failures' \
+  --output build/amigaos3-jsc-run
+```
+
+A working browser is not yet available. Use a fresh CMake
+build directory when changing the toolchain/runtime flags. The OS3 build
+resolves actual target dependencies and does not accept host libraries or
+fabricated AROS SDK paths. For the full browser, omit `AMIGAOS3_JSC_ONLY`.
+
+The complete WebCore static archive builds against the native dependency
+archives, including the networking, font, image, layout and DOM sources.
+Native UI helpers also have focused compilation and runtime coverage.
+See [browser build notes](Tools/AmigaOS3/BROWSER.md).
+Remaining work includes complete frontend compilation, native graphics
+integration and browser startup. Known frontend blockers include the OpenURL
+SDK and a classic RTG alpha-blending path. Then bring up
+local HTML and network pages,
+and measure resource use before choosing memory limits. The initial OS3
+build disables video and MediaSource because no native FFmpeg stack is
+staged. OS4 multimedia/GPU features need a separate port. Native component tests are not proof
+of a complete browser, physical hardware behavior or a minimum-RAM target.
 
 The base is an older WebKit lineage despite the recent Odyssey release;
 this branch does not claim current upstream WebKit security coverage.

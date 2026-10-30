@@ -39,7 +39,7 @@
 
 #include "gui.h"
 #include "utils.h"
-#include "clipboard.h"
+#include "OdysseyClipboard.h"
 
 using namespace WebCore;
 

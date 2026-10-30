@@ -81,7 +81,7 @@ static float scaledFontScaleFactor(cairo_scaled_font_t* scaledFont)
     double x = 1;
     double y = 0;
     cairo_matrix_transform_distance(&fontMatrix, &x, &y);
-    double xScale = std::hypot(x, y);
+    double xScale = ::hypot(x, y);
     return xScale ? narrowPrecisionToFloat(determinant / xScale) : 0.;
 }
 

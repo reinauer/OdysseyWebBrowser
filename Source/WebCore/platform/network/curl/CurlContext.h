@@ -47,6 +47,9 @@
 #endif
 
 #include <curl/curl.h>
+#if OS(AMIGAOS3)
+#include "AmigaOS3AmiSSL.h"
+#endif
 
 namespace WebCore {
 
@@ -63,18 +66,39 @@ class CurlGlobal {
 protected:
     CurlGlobal()
     {
-#if OS(AROS) || OS(AMIGAOS)
-        // 7.76.0 does not have CURL_GLOBAL_NO_GETENV
-        curl_global_init(CURL_GLOBAL_ALL );
+#if OS(AMIGAOS3)
+        RELEASE_ASSERT(odysseyAmigaOS3AmiSSLInitialize());
+#endif
+#if OS(AROS) || OS(AMIGAOS) || !defined(CURL_GLOBAL_NO_GETENV)
+        // CURL_GLOBAL_NO_GETENV is a vendor extension, absent upstream.
+        auto result = curl_global_init(CURL_GLOBAL_ALL);
 #else
-        curl_global_init(CURL_GLOBAL_ALL | CURL_GLOBAL_NO_GETENV);
+        auto result = curl_global_init(CURL_GLOBAL_ALL | CURL_GLOBAL_NO_GETENV);
+#endif
+#if OS(AMIGAOS3)
+        RELEASE_ASSERT(result == CURLE_OK);
+#else
+        UNUSED_PARAM(result);
 #endif
     }
     
-    virtual ~CurlGlobal()
+    virtual ~CurlGlobal() { cleanupGlobal(); }
+
+    void cleanupGlobal()
     {
+#if OS(AMIGAOS3)
+        if (m_cleanedUp)
+            return;
+        m_cleanedUp = true;
+#endif
         curl_global_cleanup();
+#if OS(AMIGAOS3)
+        odysseyAmigaOS3AmiSSLCleanup();
+#endif
     }
+#if OS(AMIGAOS3)
+    bool m_cleanedUp { false };
+#endif
 };
 
 // CurlShareHandle --------------------------------------------
@@ -85,6 +109,7 @@ class CurlShareHandle {
 public:
     CurlShareHandle();
     ~CurlShareHandle();
+    void cleanup();
 
     CURLSH* handle() const { return m_shareHandle; }
 
@@ -106,6 +131,9 @@ class CurlContext : public CurlGlobal {
     friend NeverDestroyed<CurlContext>;
 public:
     WEBCORE_EXPORT static CurlContext& singleton();
+#if OS(AMIGAOS3)
+    static void shutdownSingleton();
+#endif
 
     virtual ~CurlContext();
 
@@ -247,6 +275,9 @@ public:
 
     CurlHandle();
     virtual ~CurlHandle();
+#if OS(AMIGAOS3)
+    static void closeHandlesOnWorkerThread();
+#endif
 
     CURL* handle() const { return m_handle; }
     const URL& url() const { return m_url; }
@@ -347,6 +378,13 @@ private:
     static CURLcode willSetupSslCtxCallback(CURL*, void* sslCtx, void* userData);
     CURLcode willSetupSslCtx(void* sslCtx);
 
+#if OS(AMIGAOS3)
+    // Includes completed requests awaiting a main-thread response callback.
+    // They no longer appear in CurlRequestScheduler's active transfer map.
+    CurlHandle* m_previousHandle { nullptr };
+    CurlHandle* m_nextHandle { nullptr };
+    bool m_registeredHandle { false };
+#endif
     CURL* m_handle { nullptr };
     char m_errorBuffer[CURL_ERROR_SIZE] { };
 

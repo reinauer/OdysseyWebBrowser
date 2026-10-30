@@ -94,6 +94,9 @@ public:
     };
 
     Decimal(int32_t = 0);
+#if OS(AMIGAOS3)
+    Decimal(int value) : Decimal(static_cast<int32_t>(value)) { }
+#endif
     Decimal(Sign, int exponent, uint64_t coefficient);
     Decimal(const Decimal&);
 

@@ -42,7 +42,7 @@ bool detectTextEncoding(const char* data, size_t len,
                         TextEncoding* detectedEncoding)
 {
     *detectedEncoding = TextEncoding();
-    int matchesCount = 0; 
+    int32_t matchesCount = 0;
     UErrorCode status = U_ZERO_ERROR;
     UCharsetDetector* detector = ucsdet_open(&status);
     if (U_FAILURE(status))

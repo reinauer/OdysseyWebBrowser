@@ -157,7 +157,11 @@ public:
 
     float length() const
     {
+#if OS(AMIGAOS3)
+        return ::hypot(m_x, m_y);
+#else
         return std::hypot(m_x, m_y);
+#endif
     }
 
     float lengthSquared() const

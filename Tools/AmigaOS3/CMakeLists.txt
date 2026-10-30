@@ -4,10 +4,14 @@ project(OdysseyAmigaOS3Platform LANGUAGES C CXX)
 if (NOT AmigaOS3)
     message(FATAL_ERROR "Use Source/cmake/AmigaOS3.cmake as the toolchain")
 endif ()
+if (NOT AMIGAOS3_RUNTIME_ROOT)
+    message(FATAL_ERROR "Set AMIGAOS3_RUNTIME_ROOT to the pthread-enabled runtime prefix")
+endif ()
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif ()
 get_filename_component(ODYSSEY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+include(${ODYSSEY_ROOT}/Source/cmake/AmigaOS3Allocator.cmake)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -22,6 +26,7 @@ add_library(odyssey-amigaos3-platform STATIC
     ${ODYSSEY_ROOT}/Source/WTF/wtf/StackBounds.cpp
     ${ODYSSEY_ROOT}/Source/WTF/wtf/StackPointer.cpp
     ${ODYSSEY_ROOT}/Source/WTF/wtf/amigaos3/Time.c
+    ${ODYSSEY_ROOT}/Source/WTF/wtf/amigaos3/ThreadContext.cpp
 )
 target_include_directories(odyssey-amigaos3-platform PUBLIC
     ${ODYSSEY_ROOT}/Source/WTF)
@@ -29,6 +34,17 @@ target_compile_options(odyssey-amigaos3-platform PUBLIC
     -include wtf/Platform.h
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions;-fno-rtti>)
 target_compile_definitions(odyssey-amigaos3-platform PUBLIC NDEBUG)
-add_executable(odyssey-platform-test PlatformTest.cpp)
+add_executable(odyssey-platform-test PlatformTest.cpp ThreadContextTest.cpp MUICallbackTest.cpp ClipboardNotificationTest.cpp)
+target_include_directories(odyssey-platform-test PRIVATE
+    ${ODYSSEY_ROOT}/Source/WebKitLegacy/mui/UI)
 target_link_libraries(odyssey-platform-test PRIVATE
     pthread odyssey-amigaos3-platform)
+
+add_executable(odyssey-random-test RandomTest.cpp
+    ${ODYSSEY_ROOT}/Source/WTF/wtf/amigaos3/Random.c)
+target_link_libraries(odyssey-random-test PRIVATE
+    pthread odyssey-amigaos3-platform)
+
+add_executable(odyssey-runtime-test RuntimeTest.cpp)
+target_link_libraries(odyssey-runtime-test PRIVATE
+    pthread odyssey-amigaos3-platform atomic)

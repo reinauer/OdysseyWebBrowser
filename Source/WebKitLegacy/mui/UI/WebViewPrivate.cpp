@@ -98,7 +98,7 @@
 #include <proto/layers.h>
 #include <proto/keymap.h>
 #include <proto/asl.h>
-#include <devices/rawkeycodes.h>
+#include "OdysseyRawKeyCodes.h"
 #include <devices/inputevent.h>
 
 #define D(x)

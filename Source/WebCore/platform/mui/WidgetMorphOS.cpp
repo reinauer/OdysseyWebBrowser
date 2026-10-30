@@ -67,7 +67,7 @@ void Widget::setCursor(const Cursor& cursor)
 {
     if (!isFrameView())
         return;
-#if OS(AMIGAOS)
+#if OS(AMIGAOS) || OS(AMIGAOS3)
     set((Object *) getv(app, MA_OWBApp_ActiveBrowser), MA_OWBBrowser_Pointer, cursor.platformCursor());
 #else        
     if(is_morphos2())

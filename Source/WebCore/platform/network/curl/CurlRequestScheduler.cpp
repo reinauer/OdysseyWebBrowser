@@ -37,15 +37,19 @@
 #if OS(AMIGAOS)
 #define ODYSSEY
 #endif
-#include <proto/bsdsocket.h>
 #include <unistd.h>
+#include <proto/bsdsocket.h>
 #include <sys/time.h>
 #include <bsdsocket/socketbasetags.h>
-#if !OS(AMIGAOS)
+#if !OS(AMIGAOS) && !OS(AMIGAOS3)
 #include <aros/debug.h>
 #endif
 #undef send
+#if OS(AMIGAOS3)
+#include "AmigaOS3AmiSSL.h"
+#else
 struct Library *SocketBase;
+#endif
 #if OS(AMIGAOS)
 struct SocketIFace *ISocket = NULL;
 #endif
@@ -56,29 +60,40 @@ struct SocketIFace *ISocket = NULL;
 #elif OS(MORPHOS)
 extern "C" void dprintf(const char *fmt, ...);
 #define CDBG(x) dprintf x
+#elif OS(AMIGAOS3)
+#include <cstdio>
+#define CDBG(x) std::printf x
 #else
 #define CDBG(x) DebugPrintF x
 #endif
 
 void init_SocketBase()
 {
+#if OS(AMIGAOS3)
+    RELEASE_ASSERT(odysseyAmigaOS3AmiSSLWorkerInitialize());
+#else
     SocketBase = OpenLibrary("bsdsocket.library", 4L);
 #if OS(AMIGAOS)
     ISocket = (SocketIFace *)GetInterface(SocketBase, "main", 1, NULL);
 #endif
     SocketBaseTags(
-        SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(errno))), (IPTR) &errno,
-        SBTM_SETVAL(SBTC_LOGTAGPTR),       (IPTR) "cURL",
+        SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(errno))), reinterpret_cast<uintptr_t>(&errno),
+        SBTM_SETVAL(SBTC_LOGTAGPTR),       reinterpret_cast<uintptr_t>("cURL"),
         TAG_DONE);
+#endif
 }
 void close_SocketBase()
 {
+#if OS(AMIGAOS3)
+    odysseyAmigaOS3AmiSSLWorkerCleanup();
+#else
     CloseLibrary(SocketBase);
 #if OS(AMIGAOS)
     DropInterface((struct Interface*) ISocket);
     ISocket = NULL;
 #endif    
     SocketBase = NULL;
+#endif
 }
 #endif
 
@@ -99,7 +114,8 @@ bool CurlRequestScheduler::add(CurlRequestSchedulerClient* client)
     if (!client)
         return false;
 
-    startTransfer(client);
+    if (!startTransfer(client))
+        return false;
     startOrWakeUpThread();
 
     return true;
@@ -115,14 +131,19 @@ void CurlRequestScheduler::cancel(CurlRequestSchedulerClient* client)
     cancelTransfer(client);
 }
 
-void CurlRequestScheduler::callOnWorkerThread(WTF::Function<void()>&& task)
+bool CurlRequestScheduler::callOnWorkerThread(WTF::Function<void()>&& task)
 {
     {
         Locker locker { m_mutex };
+#if OS(AMIGAOS3)
+        if (m_stopped)
+            return false;
+#endif
         m_taskQueue.append(WTFMove(task));
     }
 
     startOrWakeUpThread();
+    return true;
 }
 
 void CurlRequestScheduler::startOrWakeUpThread()
@@ -135,12 +156,11 @@ void CurlRequestScheduler::startOrWakeUpThread()
             wakeUpThreadIfPossible();
             return;
         }
-    }
-
 #if PLATFORM(MUI)
-	if (m_stopped)
-		return;
+        if (m_stopped)
+            return;
 #endif
+    }
 
     if (m_thread)
         m_thread->waitForCompletion();
@@ -204,6 +224,10 @@ void CurlRequestScheduler::setMaxTotalConnections(long val)
 {
     {
         Locker locker { m_mutex };
+#if OS(AMIGAOS3)
+        if (m_stopped)
+            return;
+#endif
         if (m_maxTotalConnections == val)
             return;
         m_maxTotalConnections = val;
@@ -227,9 +251,15 @@ CurlStreamID CurlRequestScheduler::createStream(const URL& url, CurlStream::Clie
     auto streamID = m_currentStreamID;
     m_clientList.add(streamID, &client);
 
-    callOnWorkerThread([this, streamID, url = url.isolatedCopy()]() mutable {
+    bool queued = callOnWorkerThread([this, streamID, url = url.isolatedCopy()]() mutable {
         m_streamList.add(streamID, CurlStream::create(*this, streamID, WTFMove(url)));
     });
+    if (!queued) {
+        callOnMainThread([this, streamID] {
+            if (auto* client = m_clientList.get(streamID))
+                client->didFail(streamID, CURLE_ABORTED_BY_CALLBACK);
+        });
+    }
 
     return streamID;
 }
@@ -272,6 +302,9 @@ void CurlRequestScheduler::stopThread()
 {
     {
         Locker locker { m_mutex };
+#if OS(AMIGAOS3)
+        m_stopped = true;
+#endif
         m_runThread = false;
     }
 
@@ -280,6 +313,10 @@ void CurlRequestScheduler::stopThread()
         m_thread->waitForCompletion();
         m_thread = nullptr;
     }
+#if OS(AMIGAOS3)
+    // Discard queued stream notifications after their consumers shut down.
+    m_clientList.clear();
+#endif
 }
 
 void CurlRequestScheduler::executeTasks()
@@ -337,7 +374,14 @@ void CurlRequestScheduler::workerThread()
         CURLMcode mc = m_curlMultiHandle->perform(activeCount);
         if (mc != CURLM_OK) {
             CDBG(("[CURL] perform failed mc=%d\n", (int)mc));
+#if OS(AMIGAOS3)
+            // An internal multi failure is not an HTTP/TLS request error.
+            // Do not tear down task-owned handles while the main task can
+            // still release deferred responses; shutdown requires its join.
+            RELEASE_ASSERT_NOT_REACHED();
+#else
             break;
+#endif
         }
 
         const int selectTimeoutMS = 10;
@@ -372,16 +416,37 @@ void CurlRequestScheduler::workerThread()
         stopThreadIfNoMoreJobRunning();
     }
 
+#if OS(AMIGAOS3)
+    {
+        Locker locker { m_mutex };
+        RELEASE_ASSERT(m_stopped && !m_runThread);
+    }
+    // Finish queued setup/cancellation work before taking the active set.
+    // This also handles a stop immediately after the worker was started.
+    executeTasks();
+    Vector<CurlRequestSchedulerClient*> clients;
+    {
+        Locker locker { m_mutex };
+        for (auto* client : m_activeJobs)
+            clients.append(client);
+    }
+    for (auto* client : clients)
+        cancelTransfer(client);
+    executeTasks();
+    m_streamList.clear();
+    RELEASE_ASSERT(m_clientMaps.isEmpty());
+#endif
     {
         Locker locker { m_multiHandleMutex };
         m_curlMultiHandle.reset();
     }
+#if OS(AMIGAOS3)
+    CurlHandle::closeHandlesOnWorkerThread();
+#endif
 }
 
-void CurlRequestScheduler::startTransfer(CurlRequestSchedulerClient* client)
+bool CurlRequestScheduler::startTransfer(CurlRequestSchedulerClient* client)
 {
-    client->retain();
-
     auto task = [this, client]() {
         CURL* handle = client->setupTransfer();
         if (!handle) {
@@ -402,8 +467,14 @@ void CurlRequestScheduler::startTransfer(CurlRequestSchedulerClient* client)
     };
 
     Locker locker { m_mutex };
+#if OS(AMIGAOS3)
+    if (m_stopped)
+        return false;
+#endif
+    client->retain();
     m_activeJobs.add(client);
     m_taskQueue.append(WTFMove(task));
+    return true;
 }
 
 void CurlRequestScheduler::completeTransfer(CurlRequestSchedulerClient* client, CURLcode result)

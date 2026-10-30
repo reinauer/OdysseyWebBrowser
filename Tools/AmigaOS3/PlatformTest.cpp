@@ -5,6 +5,8 @@
 #include <wtf/MonotonicTime.h>
 #include <wtf/WallTime.h>
 #include <wtf/StackBounds.h>
+#include <wtf/CheckedArithmetic.h>
+#include <wtf/SaturatedArithmetic.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <stdio.h>
@@ -118,6 +120,9 @@ static void checkTime()
     CHECK(WTF::WallTime::now().secondsSinceEpoch().seconds() >= now.tv_sec);
 }
 
+unsigned checkAmigaOS3MUICallbacks();
+unsigned checkAmigaOS3ClipboardNotifications();
+
 static void checkMUI()
 {
     MUIMasterBase = OpenLibrary("muimaster.library", 19);
@@ -140,8 +145,28 @@ static void checkMUI()
     CHECK(text);
     if (text)
         MUI_DisposeObject(text);
+    failures += checkAmigaOS3MUICallbacks();
+    failures += checkAmigaOS3ClipboardNotifications();
     CloseLibrary(MUIMasterBase);
     MUIMasterBase = nullptr;
+}
+
+unsigned checkAmigaOS3ThreadContexts();
+
+static void checkArithmetic()
+{
+    uint32_t result;
+    CHECK(WTF::safeAdd(uint32_t(10), -3, result) && result == 7);
+    CHECK(!WTF::safeAdd(uint32_t(0), -1, result));
+    CHECK(!WTF::safeAdd(UINT32_MAX, 1, result));
+    CHECK(WTF::safeSub(uint32_t(10), int32_t(3), result) && result == 7);
+    CHECK(!WTF::safeSub(uint32_t(0), int32_t(1), result));
+    CHECK(WTF::safeMultiply(uint32_t(10), int32_t(3), result) && result == 30);
+    CHECK(!WTF::safeMultiply(UINT32_MAX, 2, result));
+    CHECK(WTF::saturatedSum<uint32_t>(1u, 2u, 3u) == 6);
+    CHECK(WTF::saturatedSum<uint32_t>(UINT32_MAX, 1u) == UINT32_MAX);
+    CHECK(WTF::saturatedSum<int32_t>(INT32_MAX, int32_t(1)) == INT32_MAX);
+    CHECK(WTF::saturatedDifference<int32_t>(INT32_MIN, int32_t(1)) == INT32_MIN);
 }
 
 int main(int argc, char** argv)
@@ -153,6 +178,8 @@ int main(int argc, char** argv)
     checkThreads();
     puts("Checking POSIX time and pthread condition timeout");
     checkTime();
+    checkArithmetic();
+    failures += checkAmigaOS3ThreadContexts();
     if (argc == 2 && !strcmp(argv[1], "--mui"))
         checkMUI();
     printf("Odyssey OS3 platform test: %u failures\n", failures);

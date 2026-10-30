@@ -85,34 +85,34 @@ private:
     STACK_OF(X509)* m_certs { nullptr };
 };
 
-class BIO {
+class MemoryBIO {
 public:
-    BIO()
-        : m_bio { ::BIO_new(::BIO_s_mem()) }
+    MemoryBIO()
+        : m_bio { BIO_new(BIO_s_mem()) }
     {
     }
 
-    BIO(X509* data)
-        : m_bio { ::BIO_new(::BIO_s_mem()) }
+    MemoryBIO(X509* data)
+        : m_bio { BIO_new(BIO_s_mem()) }
     {
-        ::PEM_write_bio_X509(m_bio, data);
+        PEM_write_bio_X509(m_bio, data);
     }
 
-    BIO(const Vector<uint8_t>& data)
-        : m_bio { ::BIO_new_mem_buf(data.data(), data.size()) }
+    MemoryBIO(const Vector<uint8_t>& data)
+        : m_bio { BIO_new_mem_buf(data.data(), data.size()) }
     {
     }
 
-    ~BIO()
+    ~MemoryBIO()
     {
         if (m_bio)
-            ::BIO_free(m_bio);
+            BIO_free(m_bio);
     }
 
     std::optional<Vector<uint8_t>> getDataAsVector() const
     {
         uint8_t* data { nullptr };
-        auto length = ::BIO_get_mem_data(m_bio, &data);
+        auto length = BIO_get_mem_data(m_bio, &data);
         if (length < 0)
             return std::nullopt;
 
@@ -122,7 +122,7 @@ public:
     String getDataAsString() const
     {
         uint8_t* data { nullptr };
-        auto length = ::BIO_get_mem_data(m_bio, &data);
+        auto length = BIO_get_mem_data(m_bio, &data);
         if (length < 0)
             return String();
 
@@ -131,7 +131,7 @@ public:
 
     std::unique_ptr<X509, deleter<X509>> readX509()
     {
-        return std::unique_ptr<X509, deleter<X509>>(::PEM_read_bio_X509(m_bio, nullptr, 0, nullptr));
+        return std::unique_ptr<X509, deleter<X509>>(PEM_read_bio_X509(m_bio, nullptr, 0, nullptr));
     }
 
     ::BIO* get() { return m_bio; }
@@ -147,7 +147,7 @@ static Vector<WebCore::CertificateInfo::Certificate> pemDataFromCtx(X509_STORE_C
     StackOfX509 certs { ctx };
 
     for (int i = 0; i < certs.count(); i++) {
-        BIO bio(certs.item(i));
+        MemoryBIO bio(certs.item(i));
 
         if (auto certificate = bio.getDataAsVector())
             result.append(WTFMove(*certificate));
@@ -207,7 +207,7 @@ static String getSubjectName(const X509* x509)
     if (!subjectName)
         return String();
 
-    BIO bio;
+    MemoryBIO bio;
     auto length = X509_NAME_print_ex(bio.get(), subjectName, 0, flags);
     if (length <= 0)
         return String();
@@ -299,7 +299,7 @@ static void getSubjectAltName(const X509* x509, Vector<String>& dnsNames, Vector
 
 std::optional<WebCore::CertificateSummary> createSummaryInfo(const Vector<uint8_t>& pem)
 {
-    BIO bio { pem };
+    MemoryBIO bio { pem };
     auto x509 = bio.readX509();
     if (!x509)
         return std::nullopt;

@@ -1453,6 +1453,12 @@ private:
         writeLittleEndian(m_buffer, i);
     }
 
+#if OS(AMIGAOS3)
+    // Native int and unsigned are 32 bits but distinct from int32_t.
+    void write(int i) { write(static_cast<int32_t>(i)); }
+    void write(unsigned i) { write(static_cast<uint32_t>(i)); }
+#endif
+
     void write(double d)
     {
         union {
@@ -2375,7 +2381,7 @@ private:
             return false;
         }
         if (length == StringPoolTag) {
-            unsigned index = 0;
+            uint32_t index = 0;
             if (!readStringIndex(index)) {
                 fail();
                 return false;
@@ -3372,7 +3378,7 @@ private:
             return toJS(m_lexicalGlobalObject, jsCast<JSDOMGlobalObject*>(m_globalObject), file.get());
         }
         case FileListTag: {
-            unsigned length = 0;
+            uint32_t length = 0;
             if (!read(length))
                 return JSValue();
             ASSERT(m_globalObject->inherits<JSDOMGlobalObject>(m_globalObject->vm()));
@@ -3480,7 +3486,7 @@ private:
             return RegExpObject::create(vm, m_globalObject->regExpStructure(), regExp);
         }
         case ObjectReferenceTag: {
-            unsigned index = 0;
+            uint32_t index = 0;
             if (!readConstantPoolIndex(m_gcBuffer, index)) {
                 fail();
                 return JSValue();
@@ -3671,7 +3677,7 @@ private:
     bool m_canCreateDOMObject;
     const uint8_t* m_ptr;
     const uint8_t* m_end;
-    unsigned m_version;
+    uint32_t m_version;
     Vector<CachedString> m_constantPool;
     const Vector<RefPtr<MessagePort>>& m_messagePorts;
     ArrayBufferContentsArray* m_arrayBufferContents;

@@ -33,9 +33,8 @@
 #include "Scrollbar.h"
 #include <cstdio>
 #include <intuition/intuition.h>
-#include <devices/rawkeycodes.h>
+#include "OdysseyRawKeyCodes.h"
 #include <devices/inputevent.h>
-#include <clib/debug_protos.h>
 
 namespace WebCore {
 
@@ -117,8 +116,8 @@ PlatformWheelEvent::PlatformWheelEvent(BalEventScroll* event)
         deltay = temp;
 
         temp = m_wheelTicksX;
-        m_wheelTicksY = m_wheelTicksX;
-        m_wheelTicksX = temp;
+        m_wheelTicksX = m_wheelTicksY;
+        m_wheelTicksY = temp;
     }
 
     m_deltaX = deltax;

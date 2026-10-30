@@ -41,7 +41,7 @@
 #include <utility/date.h>
 
 #include "gui.h"
-#include "clipboard.h"
+#include "OdysseyClipboard.h"
 
 using namespace WebCore;
 

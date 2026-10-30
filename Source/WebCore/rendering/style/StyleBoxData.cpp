@@ -30,7 +30,10 @@ namespace WebCore {
 struct SameSizeAsStyleBoxData : public RefCounted<SameSizeAsStyleBoxData> {
     Length length[7];
     int m_zIndex[2];
-    uint32_t bitfields;
+    unsigned bitfields : 3;
+#if ENABLE(CSS_BOX_DECORATION_BREAK)
+    unsigned boxDecorationBreak : 1;
+#endif
 };
 
 COMPILE_ASSERT(sizeof(StyleBoxData) == sizeof(SameSizeAsStyleBoxData), StyleBoxData_should_not_grow);

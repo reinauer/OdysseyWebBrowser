@@ -150,7 +150,19 @@ void CurlRequest::start()
 void CurlRequest::startWithJobManager()
 {
     ASSERT(isMainThread());
+#if OS(AMIGAOS3)
+    if (!CurlContext::singleton().scheduler().add(this)) {
+        // The stopped scheduler has never created a handle for this request.
+        // Complete cancellation without trying to restart a closed task.
+        {
+            Locker locker { m_statusMutex };
+            m_cancelled = true;
+        }
+        didCancelTransfer();
+    }
+#else
     CurlContext::singleton().scheduler().add(this);
+#endif
 }
 
 void CurlRequest::cancel()

@@ -28,6 +28,7 @@
 #include <wtf/Forward.h>
 #include <wtf/Markable.h>
 #include <wtf/Seconds.h>
+#include <math.h>
 
 namespace WebCore {
 
@@ -44,7 +45,7 @@ inline double secondsToWebAnimationsAPITime(const Seconds time)
     // The internal representation of time values is implementation dependent however, it is RECOMMENDED that user
     // agents be able to represent input time values with microsecond precision so that a time value (which nominally
     // represents milliseconds) of 0.001 is distinguishable from 0.0.
-    auto roundedTime = std::round(time.microseconds()) / 1000;
+    auto roundedTime = ::round(time.microseconds()) / 1000;
     if (roundedTime == -0)
         return 0;
     return roundedTime;

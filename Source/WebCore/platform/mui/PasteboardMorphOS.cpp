@@ -65,7 +65,7 @@
 #include <datatypes/textclass.h>
 #include <datatypes/pictureclass.h>
 #include "utils.h"
-#include "clipboard.h"
+#include "OdysseyClipboard.h"
 
 #undef String
 
@@ -118,6 +118,11 @@ static void writeUTF8(const char* data, size_t len)
         }
     }
 
+#if OS(AMIGAOS3)
+    // The device hook only signals on OS3. Drain after releasing all IFF and
+    // device locks, before callers install new rich content in the cache.
+    processClipboardNotifications();
+#endif
     if (!copied)
     {
         DisplayBeep(NULL);
@@ -148,6 +153,10 @@ std::unique_ptr<Pasteboard> Pasteboard::create(RefPtr<DataObjectMorphOS> dataObj
 std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste(std::unique_ptr<PasteboardContext>&&)
 {
     D(kprintf("Pasteboard::createForCopyAndPaste\n"));
+#if OS(AMIGAOS3)
+    // A keyboard paste can be dispatched before MUI's signal input handler.
+    processClipboardNotifications();
+#endif
     return create(0);
 }
 

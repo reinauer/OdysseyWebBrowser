@@ -76,7 +76,12 @@ namespace WebCore {
 
 struct SameSizeAsCSSValue {
     uint32_t refCount;
+#if OS(AMIGAOS3)
+    // The m68k ABI packs these flags into a two-byte allocation unit.
+    uint16_t bitfields;
+#else
     uint32_t bitfields;
+#endif
 };
 
 COMPILE_ASSERT(sizeof(CSSValue) == sizeof(SameSizeAsCSSValue), CSS_value_should_stay_small);

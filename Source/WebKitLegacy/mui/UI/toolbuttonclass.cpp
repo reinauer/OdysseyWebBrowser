@@ -28,7 +28,7 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <devices/rawkeycodes.h>
+#include "OdysseyRawKeyCodes.h"
 #include <clib/debug_protos.h>
 
 #include "gui.h"

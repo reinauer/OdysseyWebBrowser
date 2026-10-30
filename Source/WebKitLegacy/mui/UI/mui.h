@@ -286,7 +286,11 @@ ULONG getv(APTR obj, ULONG attr);
 #endif
 #if defined(__amigaos__)
 ULONG getv(APTR obj, ULONG attr);
+#if defined(__amigaos3__) || defined(__mc68000__)
+#include <amigaos3funcs.h>
+#else
 #include <aos4funcs_api.h>
+#endif
 #endif
 #if defined(__AROS__)
 IPTR getv(APTR obj, ULONG attr);

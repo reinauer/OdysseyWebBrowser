@@ -9,7 +9,19 @@ set(OdysseyWebBrowser_INCLUDE_DIRECTORIES
     "${DERIVED_SOURCES_WEBCORE_DIR}"
 )
 
-if (AmigaOS4)
+if (AmigaOS3)
+list(APPEND OdysseyWebBrowser_INCLUDE_DIRECTORIES
+    "${WEBCORE_DIR}/platform/network/curl")
+# Resolve the native static dependency graph through the framework targets.
+# Optional media/image dependencies follow WebCore's enabled features.
+set(OdysseyWebBrowser_LIBRARIES
+    -Wl,--start-group
+    WebKitLegacy
+    WebCore
+    JavaScriptCore
+    -Wl,--end-group
+)
+elseif (AmigaOS4)
 set(OdysseyWebBrowser_LIBRARIES
     JavaScriptCore
     WebKitLegacy

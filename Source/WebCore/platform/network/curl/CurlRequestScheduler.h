@@ -56,7 +56,7 @@ public:
     bool add(CurlRequestSchedulerClient*);
     void cancel(CurlRequestSchedulerClient*);
 
-    void callOnWorkerThread(WTF::Function<void()>&&);
+    bool callOnWorkerThread(WTF::Function<void()>&&);
 
 #if PLATFORM(MUI)
 	void stopCurlThread();
@@ -80,7 +80,7 @@ private:
 
     void workerThread();
 
-    void startTransfer(CurlRequestSchedulerClient*);
+    bool startTransfer(CurlRequestSchedulerClient*);
     void completeTransfer(CurlRequestSchedulerClient*, CURLcode);
     void cancelTransfer(CurlRequestSchedulerClient*);
     void finalizeTransfer(CurlRequestSchedulerClient*, Function<void()>);

@@ -28,7 +28,12 @@
 namespace WebCore {
 
 struct SameSizeAsCSSProperty {
+#if OS(AMIGAOS3)
+    // The m68k ABI packs these flags into a two-byte allocation unit.
+    uint16_t bitfields;
+#else
     uint32_t bitfields;
+#endif
     void* value;
 };
 

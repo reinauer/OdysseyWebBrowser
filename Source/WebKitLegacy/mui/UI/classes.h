@@ -18,6 +18,10 @@
 #include <libraries/mui.h>
 #include <proto/muimaster.h>
 
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+#include "amigaos3funcs.h"
+#endif
+
 #if defined(__amigaos4__)
 #define STACKED
 #define IPTR ULONG
@@ -819,7 +823,11 @@ enum {
 
     MM_DateTimeChooserPopup_DidSelect,
 
-    MA_dummyend
+    MA_dummyend,
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+    // Append new methods to preserve the existing public method numbers.
+    MM_OWBApp_ClipboardChanged,
+#endif
 };
 
 enum

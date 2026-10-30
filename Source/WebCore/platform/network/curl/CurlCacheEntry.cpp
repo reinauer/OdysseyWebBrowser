@@ -48,7 +48,10 @@
 #include <wtf/text/StringToIntegerConversion.h>
 
 #if PLATFORM(MUI)
-    #if !OS(AMIGAOS)
+    #if OS(AMIGAOS3)
+        #include <proto/exec.h>
+        #include <proto/dos.h>
+    #elif !OS(AMIGAOS)
         #include <aros/debug.h>
         #include <proto/dos.h>
     #else

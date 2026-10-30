@@ -45,7 +45,7 @@ public:
     ExceptionOr<void> setItem(unsigned index, HTMLOptionElement*);
     
     using OptionOrOptGroupElement = Variant<RefPtr<HTMLOptionElement>, RefPtr<HTMLOptGroupElement>>;
-    using HTMLElementOrInt = Variant<RefPtr<HTMLElement>, int>;
+    using HTMLElementOrInt = Variant<RefPtr<HTMLElement>, int32_t>;
     WEBCORE_EXPORT ExceptionOr<void> add(const OptionOrOptGroupElement&, const std::optional<HTMLElementOrInt>& before);
     WEBCORE_EXPORT void remove(int index);
 

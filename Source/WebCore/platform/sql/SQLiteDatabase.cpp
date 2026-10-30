@@ -223,7 +223,13 @@ void SQLiteDatabase::checkpoint(CheckpointMode mode)
 
 void SQLiteDatabase::useWALJournalMode()
 {
-#if OS(MORPHOS) // || OS(AMIGAOS) // Check this
+#if OS(AMIGAOS3)
+    // The native DOS VFS uses rollback journals and has no shared-memory API.
+    m_useWAL = false;
+    auto journalStatement = prepareStatement("PRAGMA journal_mode=DELETE;"_s);
+    if (!journalStatement || journalStatement->step() != SQLITE_ROW)
+        LOG_ERROR("SQLite database failed to select rollback journaling: %s", lastErrorMsg());
+#elif OS(MORPHOS) // || OS(AMIGAOS) // Check this
 	auto syncStatement = prepareStatement("PRAGMA synchronous=off;"_s);
 	if (syncStatement)
 		syncStatement->step();

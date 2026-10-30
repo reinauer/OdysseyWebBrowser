@@ -26,6 +26,9 @@
 
 #include "config.h"
 #include "CurlContext.h"
+#if OS(AMIGAOS3)
+#include "AmigaOS3CurlShutdown.h"
+#endif
 
 #if USE(CURL)
 #include "CertificateInfo.h"
@@ -108,6 +111,12 @@ static const ASCIILiteral httpVersion2 { "h2"_s };
 
 // CurlContext -------------------------------------------------------------------
 
+#if OS(AMIGAOS3)
+static CurlContext* activeCurlContext;
+static CurlHandle* firstCurlHandle;
+static Lock curlHandleListLock;
+#endif
+
 CurlContext& CurlContext::singleton()
 {
     static NeverDestroyed<CurlContext> sharedInstance;
@@ -116,6 +125,10 @@ CurlContext& CurlContext::singleton()
 
 CurlContext::CurlContext()
 {
+#if OS(AMIGAOS3)
+    RELEASE_ASSERT(isMainThread());
+    activeCurlContext = this;
+#endif
     initShareHandle();
 
     EnvironmentVariableReader envVar;
@@ -162,6 +175,21 @@ CurlContext::~CurlContext()
         fclose(m_logFile);
 #endif
 }
+
+#if OS(AMIGAOS3)
+void CurlContext::shutdownSingleton()
+{
+    RELEASE_ASSERT(isMainThread());
+    if (!activeCurlContext)
+        return;
+    auto* context = activeCurlContext;
+    context->m_scheduler->stopCurlThread();
+    RELEASE_ASSERT(!firstCurlHandle);
+    context->m_shareHandle.cleanup();
+    context->cleanupGlobal();
+    activeCurlContext = nullptr;
+}
+#endif
 
 #if PLATFORM(MUI)
 void CurlContext::stopThread()
@@ -212,8 +240,20 @@ CurlShareHandle::CurlShareHandle()
 
 CurlShareHandle::~CurlShareHandle()
 {
-    if (m_shareHandle)
-        curl_share_cleanup(m_shareHandle);
+    cleanup();
+}
+
+void CurlShareHandle::cleanup()
+{
+    if (m_shareHandle) {
+        auto result = curl_share_cleanup(m_shareHandle);
+#if OS(AMIGAOS3)
+        RELEASE_ASSERT(result == CURLSHE_OK);
+#else
+        UNUSED_PARAM(result);
+#endif
+        m_shareHandle = nullptr;
+    }
 }
 
 void CurlShareHandle::lockCallback(CURL*, curl_lock_data data, curl_lock_access, void*)
@@ -401,6 +441,17 @@ static int my_trace(CURL *handle, curl_infotype type,
 
 CurlHandle::CurlHandle()
 {
+#if OS(AMIGAOS3)
+    RELEASE_ASSERT(!isMainThread());
+    {
+        Locker locker { curlHandleListLock };
+        m_nextHandle = firstCurlHandle;
+        if (firstCurlHandle)
+            firstCurlHandle->m_previousHandle = this;
+        firstCurlHandle = this;
+        m_registeredHandle = true;
+    }
+#endif
     m_handle = curl_easy_init();
     curl_easy_setopt(m_handle, CURLOPT_ERRORBUFFER, m_errorBuffer);
     curl_easy_setopt(m_handle, CURLOPT_NOSIGNAL, 1L);
@@ -433,9 +484,42 @@ CurlHandle::CurlHandle()
 
 CurlHandle::~CurlHandle()
 {
+#if OS(AMIGAOS3)
+    Locker locker { curlHandleListLock };
+    if (m_registeredHandle) {
+        RELEASE_ASSERT(!isMainThread());
+        if (m_previousHandle)
+            m_previousHandle->m_nextHandle = m_nextHandle;
+        else
+            firstCurlHandle = m_nextHandle;
+        if (m_nextHandle)
+            m_nextHandle->m_previousHandle = m_previousHandle;
+    }
+#endif
     if (m_handle)
         curl_easy_cleanup(m_handle);
 }
+
+#if OS(AMIGAOS3)
+void CurlHandle::closeHandlesOnWorkerThread()
+{
+    RELEASE_ASSERT(!isMainThread());
+    Locker locker { curlHandleListLock };
+    // The scheduler has stopped accepting work and detached every easy
+    // handle from its multi handle. Close deferred-response handles too,
+    // while their task-owned socket and AmiSSL context are still alive.
+    while (auto* handle = firstCurlHandle) {
+        firstCurlHandle = handle->m_nextHandle;
+        if (firstCurlHandle)
+            firstCurlHandle->m_previousHandle = nullptr;
+        handle->m_previousHandle = handle->m_nextHandle = nullptr;
+        handle->m_registeredHandle = false;
+        if (auto* easyHandle = std::exchange(handle->m_handle, nullptr))
+            curl_easy_cleanup(easyHandle);
+        handle->m_sslVerifier = nullptr;
+    }
+}
+#endif
 
 const String CurlHandle::errorDescription(CURLcode errorCode)
 {
@@ -1104,4 +1188,11 @@ CURLcode CurlHandle::receive(uint8_t* buffer, size_t bufferSize, size_t& bytesRe
 
 }
 
+#endif
+
+#if USE(CURL) && OS(AMIGAOS3)
+extern "C" void odysseyAmigaOS3CurlShutdown(void)
+{
+    WebCore::CurlContext::shutdownSingleton();
+}
 #endif

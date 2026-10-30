@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include <math.h>
+
 #include "CSSParser.h"
 #include "Color.h"
 #include "ColorSerialization.h"
@@ -79,7 +81,7 @@ struct SVGPropertyTraits<std::pair<int, int>> {
         auto result = parseNumberOptionalNumber(string);
         if (!result)
             return { };
-        return std::make_pair(static_cast<int>(std::round(result->first)), static_cast<int>(std::round(result->second)));
+        return std::make_pair(static_cast<int>(::round(result->first)), static_cast<int>(::round(result->second)));
     }
     static std::optional<std::pair<int, int>> parse(const QualifiedName&, const String&) { ASSERT_NOT_REACHED(); return initialValue(); }
     static String toString(std::pair<int, int>) { ASSERT_NOT_REACHED(); return emptyString(); }

@@ -36,6 +36,10 @@
 #include <wtf/WorkQueue.h>
 #include <wtf/text/Base64.h>
 
+#if OS(AMIGAOS3)
+#include <proto/exec.h>
+#endif
+
 #if PLATFORM(COCOA)
 #include "VersionChecks.h"
 #endif

@@ -49,7 +49,12 @@ namespace WebCore {
 WTF_MAKE_ISO_ALLOCATED_IMPL(LegacyInlineFlowBox);
 
 struct SameSizeAsLegacyInlineFlowBox : public LegacyInlineBox {
-    uint32_t bitfields : 23;
+    // Match the actual unsigned bitfield allocation, including RootInlineBox
+    // state; uint32_t is unsigned long on m68k and packs differently.
+    unsigned bitfields : 26;
+#if !ASSERT_WITH_SECURITY_IMPLICATION_DISABLED
+    unsigned hasBadChildList : 1;
+#endif
     void* pointers[5];
 };
 

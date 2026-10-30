@@ -63,7 +63,7 @@ namespace WebCore {
 struct SameSizeAsBorderValue {
     Color m_color;
     float m_width;
-    int m_restBits;
+    unsigned m_restBits : 5;
 };
 
 COMPILE_ASSERT(sizeof(BorderValue) == sizeof(SameSizeAsBorderValue), BorderValue_should_not_grow);
@@ -73,7 +73,17 @@ struct SameSizeAsRenderStyle {
     void* ownPtrs[1];
     void* dataRefSvgStyle;
     struct InheritedFlags {
-        unsigned m_bitfields[2];
+        // Model the bitfield budget, not two whole unsigned integers:
+        // classic m68k packs the default 46 bits into six bytes.
+        unsigned m_bitfields : 32;
+        unsigned m_remainingBitfields : 9 + TextDecorationBits + PrintColorAdjustBits
+#if ENABLE(CURSOR_VISIBILITY)
+            + 1
+#endif
+#if ENABLE(TEXT_AUTOSIZING)
+            + 5
+#endif
+            ;
     } m_inheritedFlags;
 
     struct NonInheritedFlags {

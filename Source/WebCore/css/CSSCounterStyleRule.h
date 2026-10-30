@@ -30,6 +30,12 @@
 #include "StyleRule.h"
 #include <wtf/text/AtomString.h>
 
+#if OS(AMIGAOS3)
+// The SDK pthread cancellation macro collides with the CSSOM accessor.
+// This API does not invoke the C library's process-launching function.
+#undef system
+#endif
+
 namespace WebCore {
 
 // The keywords that can be used as values for the counter-style `system` descriptor.

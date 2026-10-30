@@ -62,7 +62,6 @@ list(APPEND WebCore_SOURCES
     platform/mui/MIMETypeRegistryMorphOS.cpp
     platform/mui/NetworkStateNotifierMUI.cpp
     platform/mui/PasteboardMorphOS.cpp
-    platform/mui/PlatformKeyboardEventMorphOS.cpp
     platform/mui/PlatformMouseEventMorphOS.cpp
     platform/mui/PlatformScreenMorphOS.cpp
     platform/mui/PlatformWheelEventMorphOS.cpp
@@ -86,6 +85,15 @@ list(APPEND WebCore_SOURCES
     platform/text/TextCodecICU.cpp
     platform/text/TextEncodingDetectorICU.cpp
 )
+
+if (AmigaOS3)
+    list(APPEND WebCore_SOURCES
+        platform/mui/PlatformKeyboardEventAmigaOS3.cpp
+        platform/network/curl/AmigaOS3AmiSSL.c
+        platform/mui/LocalEncodingAmigaOS3.cpp)
+else ()
+    list(APPEND WebCore_SOURCES platform/mui/PlatformKeyboardEventMorphOS.cpp)
+endif ()
 
 
 if (ENABLE_VIDEO AND ENABLE_VIDEO_TRACK)

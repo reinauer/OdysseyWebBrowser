@@ -26,7 +26,7 @@
 #include "config.h"
 #include "DisplayRefreshMonitorMorphOS.h"
 
-#if !OS(AMIGAOS)
+#if !OS(AMIGAOS) && !OS(AMIGAOS3)
 extern "C" { void dprintf(const char *,...); }
 #endif
 

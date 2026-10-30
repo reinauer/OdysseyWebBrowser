@@ -63,6 +63,9 @@
 
 #include "gui.h"
 #include "alocale.h"
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+#include "AmigaOS3CurlShutdown.h"
+#endif
 
 #undef accept
 
@@ -748,6 +751,9 @@ int main (int argc, char* argv[])
 	signal(SIGINT, SIG_IGN);
 #endif
 	atexit(close_libs);
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+    atexit(odysseyAmigaOS3CurlShutdown);
+#endif
 	atexit(destroy_application);
 #if defined(__AROS__)
 	atexit(aros_timer_close);
@@ -783,6 +789,9 @@ int main (int argc, char* argv[])
 			destroy_application();
 		}
 	}
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+    odysseyAmigaOS3CurlShutdown();
+#endif
 	close_libs();
 
 	//dosnotify_cleanup();

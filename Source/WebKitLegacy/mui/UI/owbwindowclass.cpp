@@ -81,7 +81,7 @@
 
 #include "gui.h"
 #include "utils.h"
-#include "clipboard.h"
+#include "OdysseyClipboard.h"
 #include "asl.h"
 #include "versioninfo.h"
 

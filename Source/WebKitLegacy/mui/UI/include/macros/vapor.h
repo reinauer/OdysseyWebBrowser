@@ -375,19 +375,35 @@ extern const char * const __stringtable[];
 #endif
 
 #ifndef REMOVE
+#ifdef __cplusplus
+#define REMOVE(n) do { using ::Node; Remove((struct ::Node*)n); } while (0)
+#else
 #define REMOVE(n) Remove((struct Node*)n)
+#endif
 #endif
 
 #ifndef ADDHEAD
+#ifdef __cplusplus
+#define ADDHEAD(l,n) do { using ::Node; AddHead((struct List*)l,(struct ::Node*)n); } while (0)
+#else
 #define ADDHEAD(l,n) AddHead((struct List*)l,(struct Node*)n)
+#endif
 #endif
 
 #ifndef ADDTAIL
+#ifdef __cplusplus
+#define ADDTAIL(l,n) do { using ::Node; AddTail((struct List*)l,(struct ::Node*)n); } while (0)
+#else
 #define ADDTAIL(l,n) AddTail((struct List*)l,(struct Node*)n)
+#endif
 #endif
 
 #ifndef ENQUEUE
+#ifdef __cplusplus
+#define ENQUEUE(l,n) do { using ::Node; Enqueue((struct List*)l,(struct ::Node*)n); } while (0)
+#else
 #define ENQUEUE(l,n) Enqueue((struct List*)l,(struct Node*)n)
+#endif
 #endif
 
 #ifndef NEWLIST

@@ -45,7 +45,9 @@
 #include <proto/muimaster.h>
 #include <proto/alib.h>
 #include <utility/tagitem.h>
-#ifndef __amigaos4__
+#if OS(AMIGAOS3)
+#include <amigaos3funcs.h>
+#elif !defined(__amigaos4__)
 #include <aros-overrides.h>
 #else
 #include <aos4funcs_api.h>

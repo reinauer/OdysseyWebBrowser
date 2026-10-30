@@ -1,5 +1,20 @@
 include(GNUInstallDirs)
 
+if (AmigaOS3)
+    if (NOT AMIGAOS3_RUNTIME_ROOT)
+        message(FATAL_ERROR "Build Tools/AmigaOS3/build-cxx-runtime.py and set AMIGAOS3_RUNTIME_ROOT to its prefix")
+    endif ()
+    option(AMIGAOS3_JSC_ONLY "Build the native JavaScript engine before WebCore" OFF)
+    # Newlib hides POSIX declarations in strict C++17 mode otherwise.
+    add_compile_definitions(_DEFAULT_SOURCE)
+    include(AmigaOS3Allocator)
+    # CMake's root paths do not constrain the host pkg-config process.
+    # Keep versions and private dependency flags tied to the target SDK.
+    set(ENV{PKG_CONFIG_LIBDIR} "${AMIGAOS3_DEPENDENCY_ROOT}/lib/pkgconfig")
+    set(ENV{PKG_CONFIG_PATH} "")
+    set(ENV{PKG_CONFIG_SYSROOT_DIR} "")
+endif ()
+
 # FIXME: We want to expose fewer options to downstream, but for now everything is public.
 
 WEBKIT_OPTION_BEGIN()
@@ -70,6 +85,14 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBGL PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SERVICE_WORKER PRIVATE OFF)
 WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ACCESSIBILITY PRIVATE OFF)
 
+if (AmigaOS3)
+    # The initial native dependency set has no FFmpeg/media decoder stack.
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_VIDEO PUBLIC OFF)
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEDIA_SOURCE PUBLIC OFF)
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEDIA_CONTROLS_SCRIPT PUBLIC OFF)
+    WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEDIA_STATISTICS PRIVATE OFF)
+endif ()
+
 #Candidates
 #ENABLE_CONTENT_EXTENSIONS
 #ENABLE_CURSOR_VISIBILITY
@@ -98,6 +121,13 @@ set(ENABLE_PLUGIN_PROCESS ON)
 set(ENABLE_WEBKIT OFF)
 set(ENABLE_WEBKIT_LEGACY ON)
 
+if (AmigaOS3 AND AMIGAOS3_JSC_ONLY)
+    set(ENABLE_WEBCORE OFF)
+    set(ENABLE_WEBKIT_LEGACY OFF)
+    set(ENABLE_WEBINSPECTORUI OFF)
+    set(ENABLE_TOOLS OFF)
+endif ()
+
 set(WTF_USE_ICU_UNICODE 1)
 set(WTF_USE_CURL 1)
 set(HAVE_LOCALTIME_R 1)
@@ -117,7 +147,14 @@ add_definitions(-DUSER_AGENT_GTK_MINOR_VERSION=1)
 if (AmigaOS3)
     # Resolve real target dependencies; do not fabricate AROS SDK paths or
     # accept libraries from the build host during the OS3 bring-up.
+    find_library(AMIGAOS3_NATIVE_SUPPORT_LIBRARY odyssey-amigaos3 REQUIRED)
+    add_library(AmigaOS3::Support UNKNOWN IMPORTED)
+    set_target_properties(AmigaOS3::Support PROPERTIES
+        IMPORTED_LOCATION "${AMIGAOS3_NATIVE_SUPPORT_LIBRARY}")
     find_package(ICU 61.2 REQUIRED COMPONENTS data i18n uc)
+    if (AMIGAOS3_JSC_ONLY)
+        return()
+    endif ()
     find_package(SQLite3 REQUIRED)
     find_package(LibPSL REQUIRED)
     find_package(HarfBuzz REQUIRED COMPONENTS ICU)
@@ -127,11 +164,38 @@ if (AmigaOS3)
     find_package(ZLIB REQUIRED)
     find_package(Cairo REQUIRED)
     find_package(CURL REQUIRED)
-    find_package(OpenSSL REQUIRED)
+    # AmiSSL supplies the OpenSSL API through its actual SDK stubs and
+    # native task lifecycle; there are no libssl/libcrypto archives.
+    find_path(AMIGAOS3_AMISSL_INCLUDE_DIR proto/amissl.h REQUIRED)
+    find_library(AMIGAOS3_AMISSL_STUBS_LIBRARY amisslstubs REQUIRED)
+    add_library(AmigaOS3::AmiSSL INTERFACE IMPORTED)
+    set_target_properties(AmigaOS3::AmiSSL PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${AMIGAOS3_AMISSL_INCLUDE_DIR}"
+        INTERFACE_LINK_LIBRARIES "${AMIGAOS3_AMISSL_STUBS_LIBRARY}")
+    set_property(TARGET CURL::libcurl APPEND PROPERTY INTERFACE_LINK_LIBRARIES
+        AmigaOS3::AmiSSL ZLIB::ZLIB AmigaOS3::Support)
     find_package(JPEG REQUIRED)
     find_package(PNG REQUIRED)
     find_package(Fontconfig REQUIRED)
     find_package(Freetype REQUIRED)
+    find_package(EXPAT REQUIRED)
+    find_library(AMIGAOS3_PIXMAN_LIBRARY pixman-1 REQUIRED)
+    find_library(AMIGAOS3_SHARPYUV_LIBRARY sharpyuv REQUIRED)
+    # These releases are static archives. The generic find modules do not
+    # propagate pkg-config's private dependencies into imported targets.
+    set_property(TARGET AmigaOS3::Support PROPERTY INTERFACE_LINK_LIBRARIES pthread atomic m)
+    set_property(TARGET Cairo::Cairo APPEND PROPERTY INTERFACE_LINK_LIBRARIES
+        "${AMIGAOS3_PIXMAN_LIBRARY}" Fontconfig::Fontconfig Freetype::Freetype PNG::PNG ZLIB::ZLIB AmigaOS3::Support)
+    set_property(TARGET Fontconfig::Fontconfig APPEND PROPERTY INTERFACE_LINK_LIBRARIES
+        Freetype::Freetype EXPAT::EXPAT AmigaOS3::Support)
+    set_property(TARGET Freetype::Freetype APPEND PROPERTY INTERFACE_LINK_LIBRARIES PNG::PNG ZLIB::ZLIB)
+    set_property(TARGET HarfBuzz::HarfBuzz APPEND PROPERTY INTERFACE_LINK_LIBRARIES
+        Freetype::Freetype AmigaOS3::Support)
+    set_property(TARGET HarfBuzz::ICU APPEND PROPERTY INTERFACE_LINK_LIBRARIES HarfBuzz::HarfBuzz ICU::uc)
+    set_property(TARGET LibPSL::LibPSL APPEND PROPERTY INTERFACE_LINK_LIBRARIES ICU::uc AmigaOS3::Support)
+    set_property(TARGET SQLite::SQLite3 APPEND PROPERTY INTERFACE_LINK_LIBRARIES AmigaOS3::Support)
+    set_property(TARGET WebP::demux APPEND PROPERTY INTERFACE_LINK_LIBRARIES WebP::libwebp)
+    set_property(TARGET WebP::libwebp APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${AMIGAOS3_SHARPYUV_LIBRARY}" m)
     return()
 endif ()
 

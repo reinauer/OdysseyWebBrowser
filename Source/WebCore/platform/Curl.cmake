@@ -73,5 +73,9 @@ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
 list(APPEND WebCore_LIBRARIES
     CURL::libcurl
     LibPSL::LibPSL
-    OpenSSL::SSL
 )
+if (AmigaOS3)
+    list(APPEND WebCore_LIBRARIES AmigaOS3::AmiSSL)
+else ()
+    list(APPEND WebCore_LIBRARIES OpenSSL::SSL)
+endif ()

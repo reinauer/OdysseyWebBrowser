@@ -142,7 +142,7 @@ extern void shutdownGlobalFTLWorklist();
 /* Local */
 #include "gui.h"
 #include "utils.h"
-#include "clipboard.h"
+#include "OdysseyClipboard.h"
 #include "owbcommand.h"
 #include "asl.h"
 #include "ExtCredential.h"
@@ -1020,7 +1020,9 @@ DEFNEW
     NEWLIST(&useragent_list);
     NEWLIST(&ua_list_bak);
 
+#if !OS(AMIGAOS3)
     installClipboardMonitor();
+#endif
 
     menus_init();
 
@@ -1064,6 +1066,9 @@ DEFNEW
 
         // Set it as soon as possible since it might be referenced in several places
         app = obj;
+#if OS(AMIGAOS3)
+        installClipboardMonitor();
+#endif
 
         // Try to initialize most static objects crap here with that utf8 call (sigh, what a lame hack). Needed, because doing it in a thread could cause a crash. (still true?)
         String dummy = "dummyéè";
@@ -3771,6 +3776,14 @@ DEFTMETHOD(OWBApp_ResetVM)
     return 0;
 }
 
+#if OS(AMIGAOS3)
+DEFTMETHOD(OWBApp_ClipboardChanged)
+{
+    processClipboardNotifications();
+    return 0;
+}
+#endif
+
 BEGINMTABLE
 DECNEW
 DECDISP
@@ -3788,6 +3801,9 @@ DECSMETHOD(OWBApp_AddBrowser)
 DECSMETHOD(OWBApp_RemoveBrowser)
 DECTMETHOD(OWBApp_Expose)
 DECTMETHOD(OWBApp_WebKitEvents)
+#if OS(AMIGAOS3)
+DECTMETHOD(OWBApp_ClipboardChanged)
+#endif
 DECSMETHOD(OWBApp_Download)
 DECSMETHOD(OWBApp_DownloadUpdate)
 DECSMETHOD(OWBApp_DownloadDone)

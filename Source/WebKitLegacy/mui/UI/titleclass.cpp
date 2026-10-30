@@ -30,7 +30,7 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include <proto/keymap.h>
-#include <devices/rawkeycodes.h>
+#include "OdysseyRawKeyCodes.h"
 
 #include "gui.h"
 

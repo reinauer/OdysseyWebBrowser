@@ -30,6 +30,15 @@
 
 #include "utils.h"
 #include "owb_cat.h"
+#if OS(AMIGAOS3)
+#include "LocalEncodingAmigaOS3.h"
+#include <strings.h>
+
+static int stricmp(const char* a, const char* b)
+{
+    return strcasecmp(a, b);
+}
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -550,6 +559,9 @@ char *utf8_to_local(const char *in)
         return strdup("");
     }
 
+#if OS(AMIGAOS3)
+    return WebCore::AmigaOS3::utf8ToLocal(in, strlen(in));
+#endif
 #if OS(MORPHOS)
     if(CharsetsBase)
     {
@@ -617,6 +629,9 @@ char *local_to_utf8(const char *in)
         return strdup("");
     }
 
+#if OS(AMIGAOS3)
+    return WebCore::AmigaOS3::localToUTF8(in, strlen(in));
+#endif
 #if OS(MORPHOS)
     if(CharsetsBase)
     {
@@ -813,7 +828,8 @@ STRPTR get_language(STRPTR code, ULONG len)
         if(l->loc_PrefLanguages[0])
         {
             ret = code;
-            stccpy(code, (char *) getcode(l->loc_PrefLanguages[0]), len);
+            if (len)
+                snprintf(code, len, "%s", getcode(l->loc_PrefLanguages[0]));
         }
 
         CloseLocale(l);
@@ -822,7 +838,8 @@ STRPTR get_language(STRPTR code, ULONG len)
     if(!ret)
     {
         ret = code;
-        stccpy(code, "en", len);
+        if (len)
+            snprintf(code, len, "%s", "en");
     }
 
     return ret;
@@ -941,12 +958,12 @@ char *rexx_result(void)
 
 int send_external_notification(struct external_notification *notification)
 {
-#if !OS(AROS) && !OS(AMIGAOS)
+#if OS(MORPHOS)
     struct MsgPort *replyport, *port;
 #endif
     ULONG result = 20; /* no port then tell user */
 
-#if !OS(AROS)
+#if OS(MORPHOS) || OS(AMIGAOS)
 #if OS(AMIGAOS)
 
     STRPTR iconname = NULL;
@@ -1069,7 +1086,7 @@ APTR open_dictionary(char *language)
 
     return g_dictionary;
 #endif
-#if OS(AROS) || OS(AMIGAOS)
+#if OS(AROS) || OS(AMIGAOS) || OS(AMIGAOS3)
     return NULL;
 #endif
 }
@@ -1117,6 +1134,8 @@ bool dictionary_can_learn()
 {
 #if OS(MORPHOS)    
     return (SpellCheckerBase->lib_Version > 50 || (SpellCheckerBase->lib_Version == 50 && SpellCheckerBase->lib_Revision >= 1));
+#else
+    return false;
 #endif    
 }
 
@@ -1148,6 +1167,13 @@ void enable_blanker(struct Screen *screen, ULONG enable)
     }
 }
 
+#elif OS(AMIGAOS3)
+void enable_blanker(struct Screen*, ULONG)
+{
+    // Classic Intuition has no screen-blanker inhibition API. Keep the
+    // user's normal OS/commodity blanking behavior; SA_StopBlanker is a
+    // MorphOS extension, not a tag usable on an AmigaOS 3 Screen.
+}
 #else
 static int blanker_count = 0; /* not too useful, but it should be 0 at the end */
 

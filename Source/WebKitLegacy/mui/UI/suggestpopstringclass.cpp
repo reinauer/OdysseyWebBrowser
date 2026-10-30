@@ -34,7 +34,7 @@
 #include "NetworkStorageSessionMap.h"
 
 #include <expat.h>
-#include <devices/rawkeycodes.h>
+#include "OdysseyRawKeyCodes.h"
 #include <proto/intuition.h>
 #include <proto/utility.h>
 

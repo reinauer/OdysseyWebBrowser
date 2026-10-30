@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ColorTypes.h"
+#include <math.h>
 
 namespace WebCore {
 
@@ -203,7 +204,7 @@ private:
 
         using OutputWithReplacement = ColorTypeWithReplacementComponent<Output, float>;
         if constexpr (std::is_same_v<OutputWithReplacement, Input>)
-            return makeFromComponents<Output>(asColorComponents(color).map([](float value) -> uint8_t { return std::clamp(std::lround(value * 255.0f), 0l, 255l); }));
+            return makeFromComponents<Output>(asColorComponents(color).map([](float value) -> uint8_t { return std::clamp(::lround(value * 255.0f), 0l, 255l); }));
         else
             return convertColor<Output>(convertColor<OutputWithReplacement>(color));
     }
