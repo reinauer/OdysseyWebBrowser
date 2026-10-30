@@ -17,6 +17,81 @@ preserved as `AmigaOS3-webkit-2.24.4`; it is not the current port base.
 The packaged source revision is
 `065f1615ac19c00f72bd2279d6681e940c6d44c1`.
 
+## Resume here
+
+Keep Odyssey 3.2.2 as the base; the decision is to port its platform layer,
+not restart on 2.24.4. Start with `git status --short` and `git log -5
+--oneline` in `/Users/stepan/git/OdysseyWebBrowser`. Preserve unrelated work.
+The package above remains tied to its recorded source revision; later
+documentation commits and upstream PR updates do not change its identity.
+
+For an incremental rebuild using the existing matched dependencies:
+
+```sh
+cmake -S . -B build/amigaos3-browser-oct29 -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
+  -DAMIGAOS3_TOOLCHAIN_ROOT=/opt/amiga-16.2-20261029 \
+  -DAMIGAOS3_DEPENDENCY_ROOT="$PWD/build/amigaos3-sdk-oct29" \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime-oct29" \
+  -DCMAKE_BUILD_TYPE=Release -DPORT=MUI
+cmake --build build/amigaos3-browser-oct29 \
+  --target OWB jsc odyssey_tagged_pointer_test -j4
+```
+
+Only one process/agent should write this build directory. Use a fresh build
+directory when changing SDK profiles. The `/opt/amiga-16.2` symlink has
+changed during development; use the physical SDK path above. MUI headers
+are already in the SDK; do not add Zune68's AROS source include tree.
+
+Read the following documents for the area being changed:
+
+- [SDK-PROFILES.md](Tools/AmigaOS3/SDK-PROFILES.md): rebuild order and exact
+  commands for the C++ runtime, ICU and other dependencies.
+- [RUNTIME.md](Tools/AmigaOS3/RUNTIME.md) and
+  [ICU.md](Tools/AmigaOS3/ICU.md): runtime repairs, threading/GC and Unicode.
+  Native WTF adapters are under `Source/WTF/wtf/amigaos3`; runtime patch
+  recipes are in `Tools/AmigaOS3/build-cxx-runtime.py`.
+- [BROWSER.md](Tools/AmigaOS3/BROWSER.md) and
+  [BROWSER-FIXTURE.md](Tools/AmigaOS3/BROWSER-FIXTURE.md): browser build,
+  installed guest prerequisites, launch commands, input and network tests.
+  To match the final matrix, use `--disable-topsites-screenshots` and leave
+  `--trace-streams` off. Use a new output directory and unused ports.
+- [CURL.md](Tools/AmigaOS3/CURL.md) and
+  [SOCKET_ERRNO.md](Tools/AmigaOS3/SOCKET_ERRNO.md): socket ownership,
+  error isolation and the deterministic receive regression.
+- [UPSTREAM.md](Tools/AmigaOS3/UPSTREAM.md): established SDK defects,
+  already-fixed findings and candidates still needing evidence.
+
+The local guest fixture is `build/amigaos3-amissl-fixture`; the ROM is
+`~/AmigaOS/AmigaOS-3.2-full/ROM/kicka1200.rom`, the emulator is
+`~/git/WinUAE_mac/WinUAE/bin/winuae`, and MUI5 runtime builds are under
+`~/git/zune68/build/muimaster-mui5`. Control guest input through the native
+GDB/monitor backend, not host keyboard or terminal injection. Check for
+active runners before choosing ports or changing a fixture.
+
+The `build/` archives, installed guest, test outputs and `/private/tmp`
+upstream checkouts are local artifacts, not a portable source checkout.
+A new machine needs the matching SDK and separately installed OS/MUI/AmiSSL
+assets, followed by the documented builds and fresh tests. Do not claim
+the recorded native passes for a newly built executable without rerunning
+the relevant matrix and recording its hash.
+
+Suggested next validation order:
+
+1. Cold-restart persistence and shutdown with active HTTP/WebSocket/TLS
+   connections, extending the existing native browser fixture.
+2. Startup/browsing memory and performance measurements, then real TCP/IP
+   stack and physical-hardware testing when those systems are available.
+3. Broader current-SDK allocator and threaded-newlib regressions before
+   replacing the local runtime repairs or proposing broader upstream fixes.
+
+Commit messages use Linux kernel style, all lines at most 72 characters,
+with no Signed-off-by tags; explain what changed and how. The user has
+explicitly asked not to add AI-assistance disclosures to submissions.
+Review comments should be read literally: apply an accepted code suggestion
+verbatim and verify its text before pushing. Do not post replies or merge
+PRs without authorization.
+
 ## Build and installation
 
 The matched build uses `/opt/amiga-16.2-20261029` (AmigaDev 16.2-rc21),
@@ -105,6 +180,15 @@ validated together.
   (CMake and autotools) also pass. The recorded Amiga runtime regression is against
   curl 8.23.0 and demonstrates receive-error misclassification before the
   repair and `CURLE_AGAIN` afterward.
+  As checked on 2026-10-30, the PR is open at `7d6febdbe2fc677bf5f37d861190ae2b7be5307e`.
+  The reviewer said "LGTM now!" after the exact formatting suggestion was
+  applied, and both formatting threads were resolved. The build results
+  above precede those whitespace-only follow-ups; do not assume every
+  later CI run has completed. The local PR checkout is
+  `/private/tmp/odyssey-curl-socket-errno`, branch
+  `amiga-native-socket-errno`, with the user's fork remote named `fork`.
+  Refresh GitHub state before further action; review acceptance is not a
+  merge, and the packaged curl archive has not been replaced.
 - AmigaPorts/newlib-cygwin:
   [#33: determine `isatty` from the DOS handle](https://github.com/AmigaPorts/newlib-cygwin/pull/33).
   Fresh native regression passes all nine checks; the unchanged SDK fails
