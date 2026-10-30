@@ -90,7 +90,9 @@ NEVER_INLINE void WordLock::lockSlow()
         // Need to put ourselves on the queue. Create the queue if one does not exist. This requries
         // owning the queue for a little bit. The lock that controls the queue is itself a spinlock.
 
-        ThreadData me;
+        // The queue pointer shares its low two bits with lock flags.
+        // m68k permits two-byte stack alignment, so reserve both explicitly.
+        alignas(alignof(ThreadData) > 4 ? alignof(ThreadData) : 4) ThreadData me;
 
         // Reload the current word value, since some time may have passed.
         currentWordValue = m_word.load();

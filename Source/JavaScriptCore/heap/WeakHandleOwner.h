@@ -31,7 +31,9 @@ namespace JSC {
 
 class AbstractSlotVisitor;
 
-class JS_EXPORT_PRIVATE WeakHandleOwner {
+// WeakImpl stores two state bits in owner pointers, including pointers to
+// static and embedded owners. Native m68k pointer alignment is only two.
+class alignas(alignof(void*) > 4 ? alignof(void*) : 4) JS_EXPORT_PRIVATE WeakHandleOwner {
 public:
     virtual ~WeakHandleOwner();
     // reason will only be non-null when generating a debug GC heap snapshot.

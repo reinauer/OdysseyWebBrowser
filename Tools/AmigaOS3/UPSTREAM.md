@@ -151,17 +151,33 @@ compiler defects. Likewise, explicit AmiSSL per-task initialization/socket
 ownership and the native GC backend are Odyssey platform work, not evidence
 of broken upstream ICU or generic OpenSSL.
 
+The full-graph JSC run exposed another WebKit alignment assumption:
+`LazyProperty` stored a callback in a native-aligned static object and used
+two low pointer bits as tags. On m68k that object can be only two-byte
+aligned, so decoding the tagged address read the wrong function pointer.
+Explicitly aligning the storage to at least four bytes fixes the native
+startup fault while preserving wider host alignment. This belongs in the
+engine portability code, not in the compiler ABI. The repaired matched
+shell passes 2,142 checks in `build/amigaos3-jsc-oct29-aligned/output.txt`.
+The same minimum-alignment contract applies to `WordLock` stack queue nodes
+and `WeakHandleOwner` objects. Their focused native regression reproduces
+incorrect weak states and stalled contention before the fixes, then passes
+all owner checks and 400 protected increments afterward. See the tagged
+pointer section in [RUNTIME.md](RUNTIME.md).
+
 ## Recommended follow-up
 
-Retain the validated Oct14 compatibility overlay. Pin compiler, libc,
-libpthread, libstdc++ headers and libraries as a matched SDK identity; do not
-silently mix an old rebuilt runtime with a changed `/opt` symlink. In a fresh
-Oct29 build directory, run the existing runtime, math, ICU, GC and JSC probes
-against the unmodified SDK, then add only the still-required repairs. Keep the
-old profile until that matrix passes. The new pthread source needs its own
-small TLS-key patch, not replacement with the older full pthread object.
+The original Oct14 overlay remains intact. A separate fingerprinted Oct29
+runtime and complete dependency rebuild now pass the component matrix in
+[SDK-PROFILES.md](SDK-PROFILES.md). The newer profile patches only the affected
+split pthread members and uses the matching SDK ABI throughout. Canonical GCC
+arithmetic helpers remain selected consistently; that is not a claim that
+the already corrected unsigned-conversion constant is still defective.
 
-Only then remove superseded unsigned-conversion, stable-record/join and cmath
-workarounds from the new profile. Upstream submissions should be small patches
-with standalone native reproducers and exact SDK/OS identities. No issue, PR
-or external message has been sent by this audit.
+The standalone TLS baseline/repair tests, condition-timeout evidence and
+division-link reproducer provide concrete starting points for small upstream
+submissions. Include exact SDK and OS identities. For allocator and floating
+arithmetic reports, retain the original native evidence but also reproduce
+the individual failure against the current unmodified SDK; source inspection
+alone is insufficient to label an old result as a new-SDK execution result.
+No issue, PR or external message has been sent by this audit.

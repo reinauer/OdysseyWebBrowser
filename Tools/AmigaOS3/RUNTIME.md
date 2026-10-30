@@ -342,3 +342,32 @@ cmake --build build/amigaos3-oct29-runtime \
 Use runner success markers `C++ runtime: 0 failures` and
 `math test: 0 failures`, respectively. See `UPSTREAM.md` for which older SDK
 issues have already changed upstream and the recommended matched-SDK rebuild.
+
+## Tagged stack and owner pointers
+
+Two additional tag contracts require explicit minimum four-byte alignment:
+`WordLock` stores two flags beside its stack queue-node pointer, and JSC
+`WeakImpl` stores two state bits beside a `WeakHandleOwner*`. Classic m68k
+only guarantees two-byte native alignment. The queue node now has local
+`alignas(max(native, 4))`; the weak-owner base has minimum four-byte alignment
+so static, embedded and derived owners satisfy the same contract. Wider
+native alignment remains intact. This does not alter the compiler ABI.
+
+`tagged-pointer-test.cpp` exercises static, embedded, stack and placement
+owners through the real weak-state transitions, then four contending workers
+through the real `WordLock`, including assembly entry shims that differ by
+two bytes of valid stack alignment. Before the fixes, the native probe reports
+six owner failures and stalls in contended locking
+(`build/amigaos3-tagged-pointers/native-before`). With the fixes it reports
+zero owner failures, all 400 protected increments and RETURN=0
+(`build/amigaos3-tagged-pointers/native-after/output.txt`). A host Clang probe
+also accepts the declarations with eight-byte pointer alignment.
+
+The reproducible full-engine target is `odyssey_tagged_pointer_test`; run its
+`bin/odyssey-tagged-pointer-test` using the standard native runner and success
+marker `Tagged pointer test: 0 failures`. The private before/after probe used
+production `WordLock.cpp` and `WeakHandleOwner.cpp` with the full build's actual
+compiler/link flags; it did not replace objects in the browser archive.
+The CMake target linked against the rebuilt production archives also passes
+with zero failures and 400 increments in
+`build/amigaos3-tagged-pointers/production-native/output.txt`.
