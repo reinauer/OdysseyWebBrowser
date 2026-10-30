@@ -53,11 +53,17 @@
 
 #if PLATFORM(MUI)
 #include <cstdint>
-#if !OS(AMIGAOS)
+#if !OS(AMIGAOS) && !OS(AMIGAOS3)
 extern "C" { void dprintf(const char *,... ); }
 #endif
 #undef CRASH
+#if OS(AMIGAOS3)
+// The Amiga Hunk target cannot emit the weak alias used by the other ports.
+// Keep the entry point called by the MUI JavaScriptCore allocation paths.
+extern "C" void oomCrash() { std::abort(); }
+#else
 extern "C" { void _oomCrash() { std::abort(); }; void oomCrash() __attribute__((weak, alias ("_oomCrash"))); }
+#endif
 #define CRASH oomCrash
 #endif
 
@@ -235,6 +241,44 @@ void fastAlignedFree(void *p)
 	free(p);
 }
 
+#elif OS(AMIGAOS3)
+
+// The classic SDK declares posix_memalign, but does not supply it at link
+// time. Retain the malloc base immediately before the aligned payload.
+void* tryFastAlignedMalloc(size_t alignment, size_t size)
+{
+    FAIL_IF_EXCEEDS_LIMIT(size);
+    if (!alignment || (alignment & (alignment - 1)))
+        return nullptr;
+    alignment = std::max(alignment, sizeof(void*));
+    size = size ? size : 2;
+    size_t overhead = alignment - 1 + sizeof(void*);
+    if (size > SIZE_MAX - overhead)
+        return nullptr;
+    void* base = malloc(size + overhead);
+    if (!base)
+        return nullptr;
+    uintptr_t address = (reinterpret_cast<uintptr_t>(base) + overhead) & ~(alignment - 1);
+    void* result = reinterpret_cast<void*>(address);
+    static_cast<void**>(result)[-1] = base;
+    return result;
+}
+
+void* fastAlignedMalloc(size_t alignment, size_t size)
+{
+    ASSERT_IS_WITHIN_LIMIT(size);
+    void* result = tryFastAlignedMalloc(alignment, size);
+    if (!result)
+        CRASH();
+    return result;
+}
+
+void fastAlignedFree(void* pointer)
+{
+    if (pointer)
+        free(static_cast<void**>(pointer)[-1]);
+}
+
 #else
 
 void* fastAlignedMalloc(size_t alignment, size_t size) 
@@ -309,6 +353,9 @@ retry:
     void* result = malloc(n ? n : 2);
     if (!result)
     {
+#if OS(AMIGAOS3)
+        CRASH();
+#endif
 #if OS(AROS)
         if (aros_memory_allocation_error(n ? n : 2, 4) == 1)
             goto retry;
@@ -341,6 +388,9 @@ retry:
     void* result = calloc(n_elements ? n_elements : 1, element_size ? element_size : 2);
     if (!result)
     {
+#if OS(AMIGAOS3)
+        CRASH();
+#endif
 #if OS(AROS)
         if (aros_memory_allocation_error((n_elements ? n_elements : 1)*(element_size ? element_size : 2), 4) == 1)
             goto retry;
@@ -371,6 +421,9 @@ retry:
     void* result = realloc(p, n ? n : 2);
     if (!result)
     {
+#if OS(AMIGAOS3)
+        CRASH();
+#endif
 #if OS(AROS)
         if (aros_memory_allocation_error(n ? n : 2, 4) == 1)
             goto retry;

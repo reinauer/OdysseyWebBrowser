@@ -65,10 +65,11 @@ inline size_t systemPageSize()
 	return 16;
 }
 
-#elif OS(AROS)
+#elif OS(AROS) || OS(AMIGAOS3)
 
 inline size_t systemPageSize()
 {
+    // OS3 has no virtual pages. Match the alignment used by its allocator.
     return 4096;
 }
 

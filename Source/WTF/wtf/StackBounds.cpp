@@ -30,6 +30,11 @@
 
 #include <pthread.h>
 
+#elif OS(AMIGAOS3)
+
+#include <exec/tasks.h>
+#include <proto/exec.h>
+
 #elif OS(WINDOWS)
 
 #include <windows.h>
@@ -74,6 +79,14 @@ StackBounds StackBounds::currentThreadStackBoundsInternal()
         return StackBounds { origin, bound };
     }
     return newThreadStackBounds(pthread_self());
+}
+
+#elif OS(AMIGAOS3)
+
+StackBounds StackBounds::currentThreadStackBoundsInternal()
+{
+    auto* task = FindTask(nullptr);
+    return StackBounds { task->tc_SPUpper, task->tc_SPLower };
 }
 
 #elif OS(UNIX) || OS(MORPHOS) || OS(AROS) || OS(AMIGAOS)

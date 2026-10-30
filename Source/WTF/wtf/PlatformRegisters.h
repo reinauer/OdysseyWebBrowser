@@ -36,7 +36,7 @@
 #include <windows.h>
 #elif OS(MORPHOS)
 #elif OS(AROS)
-#elif OS(AMIGAOS)
+#elif OS(AMIGAOS) || OS(AMIGAOS3)
 #else
 #include <sys/ucontext.h>
 #endif

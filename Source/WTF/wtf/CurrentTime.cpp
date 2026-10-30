@@ -60,7 +60,7 @@
 #include <zircon/syscalls.h>
 #endif
 
-#if PLATFORM(MUI)
+#if PLATFORM(MUI) && !OS(AMIGAOS3)
 extern long get_DST_offset(void);
 extern long get_GMT_offset(void);
 #endif
@@ -72,6 +72,10 @@ extern long get_GMT_offset(void);
 #if OS(MORPHOS)
 #include <exec/system.h>
 #include <proto/exec.h>
+#endif
+
+#if OS(AMIGAOS3)
+extern "C" double amigaos3MonotonicTime(void);
 #endif
 
 namespace WTF {
@@ -251,7 +255,7 @@ static inline double currentTime()
     struct timeval now;
 
 	gettimeofday(&now, 0);
-#if PLATFORM(MUI)
+#if PLATFORM(MUI) && !OS(AMIGAOS3)
 	return now.tv_sec + now.tv_usec / 1000000.0 + (double) (get_GMT_offset()) + (double) (get_DST_offset());
 #else
 	return now.tv_sec + now.tv_usec / 1000000.0;
@@ -313,6 +317,8 @@ MonotonicTime MonotonicTime::now()
     };
     static const tbClock tb;
     return fromRawSeconds(static_cast<double>(__builtin_ppc_get_timebase()) / tb.clockFrequency());
+#elif OS(AMIGAOS3)
+    return fromRawSeconds(amigaos3MonotonicTime());
 #elif OS(LINUX) || OS(FREEBSD) || OS(OPENBSD) || OS(NETBSD) || OS(AMIGAOS)
     struct timespec ts { };
     clock_gettime(CLOCK_MONOTONIC, &ts);

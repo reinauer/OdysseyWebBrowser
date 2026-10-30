@@ -24,3 +24,10 @@ if (AmigaOS4)
 #        mui/MemoryPressureHandlerMorphOS.cpp
     )
 endif()
+if (AmigaOS3)
+    list(APPEND WTF_SOURCES
+        OSAllocatorAmigaOS3.cpp
+        amigaos3/Time.c
+        generic/MemoryPressureHandlerGeneric.cpp
+    )
+endif()
