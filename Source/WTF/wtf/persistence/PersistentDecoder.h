@@ -59,7 +59,26 @@ public:
     WTF_EXPORT_PRIVATE Decoder& operator>>(std::optional<float>&);
     WTF_EXPORT_PRIVATE Decoder& operator>>(std::optional<double>&);
 
-    template<typename T, std::enable_if_t<!std::is_arithmetic<typename std::remove_const<T>>::value && !std::is_enum<T>::value>* = nullptr>
+#if OS(AMIGAOS3)
+    Decoder& operator>>(std::optional<int>& result)
+    {
+        static_assert(sizeof(int) == sizeof(int32_t));
+        std::optional<int32_t> value;
+        *this >> value;
+        result = value;
+        return *this;
+    }
+    Decoder& operator>>(std::optional<unsigned>& result)
+    {
+        static_assert(sizeof(unsigned) == sizeof(uint32_t));
+        std::optional<uint32_t> value;
+        *this >> value;
+        result = value;
+        return *this;
+    }
+#endif
+
+    template<typename T, std::enable_if_t<!std::is_arithmetic<std::remove_const_t<T>>::value && !std::is_enum<T>::value>* = nullptr>
     Decoder& operator>>(std::optional<T>& result)
     {
         result = Coder<T>::decode(*this);

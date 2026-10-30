@@ -29,6 +29,10 @@
 
 #include <stdlib.h>
 
+#if OS(AMIGAOS3)
+extern "C" int odysseyAmigaOS3RandomBytes(unsigned char*, size_t);
+#endif
+
 #if (!OS(DARWIN) && !OS(FUCHSIA) && OS(UNIX)) || OS(AMIGAOS)
 #include <errno.h>
 #include <fcntl.h>
@@ -80,7 +84,7 @@ RandomDevice::~RandomDevice()
 }
 #endif
 
-#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS) && !OS(AROS)
+#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS) && !OS(AROS) && !OS(AMIGAOS3)
 RandomDevice::RandomDevice()
 {
     int ret = 0;
@@ -93,7 +97,7 @@ RandomDevice::RandomDevice()
 }
 #endif
 
-#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS) && !OS(AROS)
+#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS) && !OS(AROS) && !OS(AMIGAOS3)
 RandomDevice::~RandomDevice()
 {
     close(m_fd);
@@ -110,6 +114,8 @@ void RandomDevice::cryptographicallyRandomValues(unsigned char* buffer, size_t l
     zx_cprng_draw(buffer, length);
 #elif OS(MORPHOS)
 	RandomBytes((APTR)buffer, length);
+#elif OS(AMIGAOS3)
+    RELEASE_ASSERT(odysseyAmigaOS3RandomBytes(buffer, length));
 #elif OS(UNIX) || OS(AMIGAOS)
     ssize_t amountRead = 0;
     while (static_cast<size_t>(amountRead) < length) {

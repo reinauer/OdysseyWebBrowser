@@ -1,0 +1,244 @@
+--- a/source/common/unifiedcache.cpp
++++ b/source/common/unifiedcache.cpp
+@@ -266,7 +266,7 @@
+ 
+     int32_t unusedLimitByPercentage = fNumValuesInUse * fMaxPercentageOfInUse / 100;
+     int32_t unusedLimit = std::max(unusedLimitByPercentage, fMaxUnused);
+-    int32_t countOfItemsToEvict = std::max(0, evictableItems - unusedLimit);
++    int32_t countOfItemsToEvict = std::max<int32_t>(0, evictableItems - unusedLimit);
+     return countOfItemsToEvict;
+ }
+ 
+--- a/source/i18n/number_types.h
++++ b/source/i18n/number_types.h
+@@ -103,11 +103,11 @@
+ 
+     virtual ~AffixPatternProvider();
+ 
+-    virtual char16_t charAt(int flags, int i) const = 0;
+-
+-    virtual int length(int flags) const = 0;
+-
+-    virtual UnicodeString getString(int flags) const = 0;
++    virtual char16_t charAt(int32_t flags, int32_t i) const = 0;
++
++    virtual int32_t length(int32_t flags) const = 0;
++
++    virtual UnicodeString getString(int32_t flags) const = 0;
+ 
+     virtual bool hasCurrencySign() const = 0;
+ 
+@@ -153,7 +153,7 @@
+      *            formatted.
+      * @return The number of characters (UTF-16 code units) that were added to the string builder.
+      */
+-    virtual int32_t apply(NumberStringBuilder& output, int leftIndex, int rightIndex,
++    virtual int32_t apply(NumberStringBuilder& output, int32_t leftIndex, int32_t rightIndex,
+                           UErrorCode& status) const = 0;
+ 
+     /**
+--- a/source/i18n/number_mapper.cpp
++++ b/source/i18n/number_mapper.cpp
+@@ -375,11 +375,11 @@
+     }
+ }
+ 
+-char16_t PropertiesAffixPatternProvider::charAt(int flags, int i) const {
++char16_t PropertiesAffixPatternProvider::charAt(int32_t flags, int32_t i) const {
+     return getStringInternal(flags).charAt(i);
+ }
+ 
+-int PropertiesAffixPatternProvider::length(int flags) const {
++int32_t PropertiesAffixPatternProvider::length(int32_t flags) const {
+     return getStringInternal(flags).length();
+ }
+ 
+--- a/source/i18n/decimfmt.cpp
++++ b/source/i18n/decimfmt.cpp
+@@ -1333,7 +1333,7 @@
+         return false;
+     }
+     if (std::isnan(input)
+-            || std::trunc(input) != input
++            || ::trunc(input) != input
+             || input <= INT32_MIN
+             || input > INT32_MAX) {
+         return false;
+@@ -1371,7 +1371,7 @@
+             *(--ptr) = fields->fastData.cpGroupingSeparator;
+             group = 1;
+         }
+-        std::div_t res = std::div(input, 10);
++        std::ldiv_t res = std::ldiv(input, 10L);
+         *(--ptr) = static_cast<char16_t>(fields->fastData.cpZero + res.rem);
+         input = res.quot;
+     }
+--- a/source/i18n/number_decimalquantity.cpp
++++ b/source/i18n/number_decimalquantity.cpp
+@@ -432,7 +432,7 @@
+         for (; i <= -22; i += 22) n /= 1e22;
+         n /= DOUBLE_MULTIPLIERS[-i];
+     }
+-    auto result = static_cast<int64_t>(std::round(n));
++    auto result = static_cast<int64_t>(::round(n));
+     if (result != 0) {
+         _setToLong(result);
+         scale -= fracLength;
+@@ -446,8 +446,8 @@
+     // Call the slow oracle function (Double.toString in Java, DoubleToAscii in C++).
+     char buffer[DoubleToStringConverter::kBase10MaximalLength + 1];
+     bool sign; // unused; always positive
+-    int32_t length;
+-    int32_t point;
++    int length;
++    int point;
+     DoubleToStringConverter::DoubleToAscii(
+         origDouble,
+         DoubleToStringConverter::DtoaMode::SHORTEST,
+@@ -503,7 +503,7 @@
+     uint64_t result = 0L;
+     int32_t upperMagnitude = std::min(scale + precision, lOptPos) - 1;
+     if (truncateIfOverflow) {
+-        upperMagnitude = std::min(upperMagnitude, 17);
++        upperMagnitude = std::min<int32_t>(upperMagnitude, 17);
+     }
+     for (int32_t magnitude = upperMagnitude; magnitude >= 0; magnitude--) {
+         result = result * 10 + getDigitPos(magnitude - scale);
+@@ -576,7 +576,7 @@
+     // We are processing well-formed input, so we don't need any special options to StringToDoubleConverter.
+     StringToDoubleConverter converter(0, 0, 0, "", "");
+     UnicodeString numberString = this->toScientificString();
+-    int32_t count;
++    int count;
+     return converter.StringToDouble(
+             reinterpret_cast<const uint16_t*>(numberString.getBuffer()),
+             numberString.length(),
+@@ -791,7 +791,7 @@
+     }
+     for (int m = getUpperDisplayMagnitude(); m >= getLowerDisplayMagnitude(); m--) {
+         if (m == -1) { sb.append(u'.'); }
+-        sb.append(getDigit(m) + u'0');
++        sb.append(static_cast<char16_t>(getDigit(m) + u'0'));
+     }
+     return sb;
+ }
+@@ -811,11 +811,11 @@
+     int32_t upperPos = std::min(precision + scale, lOptPos) - scale - 1;
+     int32_t lowerPos = std::max(scale, rOptPos) - scale;
+     int32_t p = upperPos;
+-    result.append(u'0' + getDigitPos(p));
++    result.append(static_cast<char16_t>(u'0' + getDigitPos(p)));
+     if ((--p) >= lowerPos) {
+         result.append(u'.');
+         for (; p >= lowerPos; p--) {
+-            result.append(u'0' + getDigitPos(p));
++            result.append(static_cast<char16_t>(u'0' + getDigitPos(p)));
+         }
+     }
+     result.append(u'E');
+@@ -831,8 +831,8 @@
+     }
+     int32_t insertIndex = result.length();
+     while (_scale > 0) {
+-        std::div_t res = std::div(_scale, 10);
+-        result.insert(insertIndex, u'0' + res.rem);
++        std::ldiv_t res = std::ldiv(_scale, 10L);
++        result.insert(insertIndex, static_cast<char16_t>(u'0' + res.rem));
+         _scale = res.quot;
+     }
+     return result;
+--- a/source/i18n/number_rounding.cpp
++++ b/source/i18n/number_rounding.cpp
+@@ -58,8 +58,8 @@
+ digits_t roundingutils::doubleFractionLength(double input) {
+     char buffer[DoubleToStringConverter::kBase10MaximalLength + 1];
+     bool sign; // unused; always positive
+-    int32_t length;
+-    int32_t point;
++    int length;
++    int point;
+     DoubleToStringConverter::DoubleToAscii(
+             input,
+             DoubleToStringConverter::DtoaMode::SHORTEST,
+--- a/source/i18n/number_patternstring.cpp
++++ b/source/i18n/number_patternstring.cpp
+@@ -895,7 +895,7 @@
+     table[10][standIdx] = u"#";
+     table[10][localIdx] = symbols.getConstSymbol(DecimalFormatSymbols::kDigitSymbol);
+     for (int i = 0; i < 10; i++) {
+-        table[11 + i][standIdx] = u'0' + i;
++        table[11 + i][standIdx] = static_cast<char16_t>(u'0' + i);
+         table[11 + i][localIdx] = symbols.getConstDigitSymbol(i);
+     }
+ 
+--- a/source/i18n/number_modifiers.cpp
++++ b/source/i18n/number_modifiers.cpp
+@@ -54,7 +54,7 @@
+ Modifier::~Modifier() = default;
+ 
+ 
+-int32_t ConstantAffixModifier::apply(NumberStringBuilder &output, int leftIndex, int rightIndex,
++int32_t ConstantAffixModifier::apply(NumberStringBuilder &output, int32_t leftIndex, int32_t rightIndex,
+                                      UErrorCode &status) const {
+     // Insert the suffix first since inserting the prefix will change the rightIndex
+     int length = output.insert(rightIndex, fSuffix, fField, status);
+@@ -108,7 +108,7 @@
+         : fField(UNUM_FIELD_COUNT), fStrong(false), fPrefixLength(0), fSuffixLength(0) {
+ }
+ 
+-int32_t SimpleModifier::apply(NumberStringBuilder &output, int leftIndex, int rightIndex,
++int32_t SimpleModifier::apply(NumberStringBuilder &output, int32_t leftIndex, int32_t rightIndex,
+                               UErrorCode &status) const {
+     return formatAsPrefixSuffix(output, leftIndex, rightIndex, fField, status);
+ }
+@@ -157,7 +157,7 @@
+     }
+ }
+ 
+-int32_t ConstantMultiFieldModifier::apply(NumberStringBuilder &output, int leftIndex, int rightIndex,
++int32_t ConstantMultiFieldModifier::apply(NumberStringBuilder &output, int32_t leftIndex, int32_t rightIndex,
+                                           UErrorCode &status) const {
+     int32_t length = output.insert(leftIndex, fPrefix, status);
+     if (fOverwrite) {
+@@ -226,7 +226,7 @@
+     }
+ }
+ 
+-int32_t CurrencySpacingEnabledModifier::apply(NumberStringBuilder &output, int leftIndex, int rightIndex,
++int32_t CurrencySpacingEnabledModifier::apply(NumberStringBuilder &output, int32_t leftIndex, int32_t rightIndex,
+                                               UErrorCode &status) const {
+     // Currency spacing logic
+     int length = 0;
+--- a/source/i18n/number_utils.cpp
++++ b/source/i18n/number_utils.cpp
+@@ -139,8 +139,8 @@
+     // Allocate enough room for: all digits, "E-324", and NUL-terminator.
+     char buffer[DoubleToStringConverter::kBase10MaximalLength + 6];
+     bool sign; // unused; always positive
+-    int32_t length;
+-    int32_t point;
++    int length;
++    int point;
+     DoubleToStringConverter::DoubleToAscii(
+             d,
+             DoubleToStringConverter::DtoaMode::SHORTEST,
+--- a/source/i18n/erarules.cpp
++++ b/source/i18n/erarules.cpp
+@@ -248,7 +248,7 @@
+         status = U_ILLEGAL_ARGUMENT_ERROR;
+         return year;
+     }
+-    int fields[3];
++    int32_t fields[3];
+     decodeDate(startDates[eraIdx], fields);
+     year = fields[0];
+ 
+@@ -289,7 +289,7 @@
+ 
+ void EraRules::initCurrentEra() {
+     UDate now = ucal_getNow();
+-    int year, month0, dom, dow, doy, mid;
++    int32_t year, month0, dom, dow, doy, mid;
+     Grego::timeToFields(now, year, month0, dom, dow, doy, mid);
+     int currentEncodedDate = encodeDate(year, month0 + 1 /* changes to 1-base */, dom);
+     int eraIdx = numEras - 1;

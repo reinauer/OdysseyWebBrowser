@@ -102,13 +102,15 @@ int pthread_setname_np(pthread_t thread, const char *name);
 
 namespace WTF {
 
+#if !OS(AMIGAOS3)
 static Lock globalSuspendLock;
+#endif
 
 Thread::~Thread()
 {
 }
 
-#if !OS(DARWIN)
+#if !OS(DARWIN) && !OS(AMIGAOS3)
 class Semaphore final {
     WTF_MAKE_NONCOPYABLE(Semaphore);
     WTF_MAKE_FAST_ALLOCATED;
@@ -204,6 +206,7 @@ void Thread::signalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
 
 void Thread::initializePlatformThreading()
 {
+#if !OS(AMIGAOS3)
     if (!g_wtfConfig.isUserSpecifiedThreadSuspendResumeSignalConfigured) {
         g_wtfConfig.sigThreadSuspendResume = SIGUSR1;
         if (const char* string = getenv("JSC_SIGNAL_FOR_GC")) {
@@ -246,6 +249,7 @@ void Thread::initializePlatformThreading()
     RELEASE_ASSERT(signalIsInstalled);
 #endif
 #endif
+#endif // !OS(AMIGAOS3)
 }
 
 #if OS(LINUX)
@@ -257,7 +261,7 @@ ThreadIdentifier Thread::currentID()
 
 void Thread::initializeCurrentThreadEvenIfNonWTFCreated()
 {
-#if !OS(DARWIN) && !OS(MORPHOS) && !OS(AROS) && !OS(AMIGAOS)
+#if !OS(DARWIN) && !OS(MORPHOS) && !OS(AROS) && !OS(AMIGAOS) && !OS(AMIGAOS3)
     RELEASE_ASSERT(g_wtfConfig.isThreadSuspendResumeSignalConfigured);
     sigset_t mask;
     sigemptyset(&mask);
@@ -295,7 +299,7 @@ bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> st
     pthread_t threadHandle;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
-#if OS(AROS) || OS(AMIGAOS)
+#if OS(AROS) || OS(AMIGAOS) || OS(AMIGAOS3)
     pthread_attr_setstacksize(&attr, 512 * 1024);
 #endif
 #if HAVE(QOS_CLASSES)
@@ -433,6 +437,11 @@ bool Thread::signal(int signalNumber)
 
 auto Thread::suspend() -> Expected<void, PlatformSuspendError>
 {
+#if OS(AMIGAOS3)
+    if (!m_amigaContext.suspend())
+        return makeUnexpected(ESRCH);
+    return { };
+#else
     RELEASE_ASSERT_WITH_MESSAGE(this != &Thread::current(), "We do not support suspending the current thread itself.");
     // During suspend, suspend or resume should not be executed from the other threads.
     // We use global lock instead of per thread lock.
@@ -471,10 +480,14 @@ auto Thread::suspend() -> Expected<void, PlatformSuspendError>
     ++m_suspendCount;
 #endif
     return { };
+#endif // OS(AMIGAOS3)
 }
 
 void Thread::resume()
 {
+#if OS(AMIGAOS3)
+    m_amigaContext.resume();
+#else
     // During resume, suspend or resume should not be executed from the other threads.
     Locker locker { globalSuspendLock };
 #if OS(DARWIN)
@@ -496,6 +509,7 @@ void Thread::resume()
     }
     --m_suspendCount;
 #endif
+#endif // OS(AMIGAOS3)
 }
 
 #if OS(DARWIN)
@@ -534,6 +548,11 @@ static ThreadStateMetadata threadStateMetadata()
 
 size_t Thread::getRegisters(PlatformRegisters& registers)
 {
+#if OS(AMIGAOS3)
+    // Exec saved every integer register in this suspended stack.
+    registers.stackPointer = m_amigaContext.stackPointer();
+    return sizeof(PlatformRegisters);
+#else
     // On PLATFORM(MUI) (MorphOS/AmigaOS), suspend() is a no-op that returns success
     // without actually suspending the thread or setting m_platformRegisters.
     // The lock is only needed when signal-based suspension is active; acquiring it
@@ -559,6 +578,7 @@ size_t Thread::getRegisters(PlatformRegisters& registers)
     registers = *platformRegisters;
     return sizeof(PlatformRegisters);
 #endif
+#endif // OS(AMIGAOS3)
 }
 
 void Thread::establishPlatformSpecificHandle(pthread_t handle)
@@ -596,7 +616,9 @@ Thread& Thread::initializeTLS(Ref<Thread>&& thread)
 #if !HAVE(FAST_TLS)
     ASSERT(s_key != InvalidThreadSpecificKey);
     threadSpecificSet(s_key, &threadInTLS);
+#if OS(MORPHOS) || OS(AMIGAOS) || OS(AROS)
     FindTask(NULL)->tc_UserData = &threadInTLS;
+#endif
 #else
     _pthread_setspecific_direct(WTF_THREAD_DATA_KEY, &threadInTLS);
     pthread_key_init_np(WTF_THREAD_DATA_KEY, &destructTLS);
@@ -620,7 +642,9 @@ void Thread::destructTLS(void* data)
 #if !HAVE(FAST_TLS)
     ASSERT(s_key != InvalidThreadSpecificKey);
     threadSpecificSet(s_key, thread);
+#if OS(MORPHOS) || OS(AMIGAOS) || OS(AROS)
     FindTask(NULL)->tc_UserData = NULL;
+#endif
 #else
     _pthread_setspecific_direct(WTF_THREAD_DATA_KEY, thread);
     pthread_key_init_np(WTF_THREAD_DATA_KEY, &destructTLS);

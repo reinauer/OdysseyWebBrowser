@@ -5,10 +5,14 @@ list(APPEND WTF_SOURCES
     generic/RunLoopGeneric.cpp
     text/mui/TextBreakIteratorInternalICUMorphOS.cpp
     mui/CPUTimeAROS.cpp
-    mui/LanguageMorphOS.cpp
     generic/MemoryFootprintGeneric.cpp
     generic/MainThreadGeneric.cpp
 )
+if (AmigaOS3)
+    list(APPEND WTF_SOURCES amigaos3/LanguageAmigaOS3.cpp)
+else ()
+    list(APPEND WTF_SOURCES mui/LanguageMorphOS.cpp)
+endif ()
 if (AROS)
     list(APPEND WTF_SOURCES 
         mui/execallocator.cpp
@@ -27,6 +31,8 @@ endif()
 if (AmigaOS3)
     list(APPEND WTF_SOURCES
         OSAllocatorAmigaOS3.cpp
+        amigaos3/ThreadContext.cpp
+        amigaos3/Random.c
         amigaos3/Time.c
         generic/MemoryPressureHandlerGeneric.cpp
     )

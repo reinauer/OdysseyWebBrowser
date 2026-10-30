@@ -49,6 +49,10 @@
 #include <wtf/WordLock.h>
 #include <wtf/text/AtomStringTable.h>
 
+#if OS(AMIGAOS3)
+#include <wtf/amigaos3/ThreadContext.h>
+#endif
+
 #if USE(PTHREADS) && !OS(DARWIN)
 #include <signal.h>
 #endif
@@ -281,7 +285,7 @@ protected:
     void establishPlatformSpecificHandle(PlatformThreadHandle, ThreadIdentifier);
 #endif
 
-#if USE(PTHREADS) && !OS(DARWIN) && !OS(MORPHOS) && !OS(AMIGAOS)
+#if USE(PTHREADS) && !OS(DARWIN) && !OS(MORPHOS) && !OS(AMIGAOS) && !OS(AMIGAOS3)
     static void signalHandlerSuspendResume(int, siginfo_t*, void* ucontext);
 #endif
 
@@ -375,6 +379,9 @@ protected:
     PlatformRegisters m_savedPlatformRegisters { };
     PlatformRegisters* m_platformRegisters { nullptr };
     unsigned m_suspendCount { 0 };
+#if OS(AMIGAOS3)
+    AmigaOS3ThreadContext m_amigaContext;
+#endif
 #endif
 
 #if OS(WINDOWS)

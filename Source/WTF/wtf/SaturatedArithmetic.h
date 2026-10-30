@@ -45,8 +45,8 @@ template<typename IntegralType> IntegralType saturatedDifference(IntegralType, I
 
 inline bool signedAddInt32Overflows(int32_t a, int32_t b, int32_t& result)
 {
-#if COMPILER_HAS_CLANG_BUILTIN(__builtin_sadd_overflow) && !(defined __clang_major__ && __clang_major__ < 7)
-    return __builtin_sadd_overflow(a, b, &result);
+#if COMPILER_HAS_CLANG_BUILTIN(__builtin_add_overflow) && !(defined __clang_major__ && __clang_major__ < 7)
+    return __builtin_add_overflow(a, b, &result);
 #else
     uint32_t ua = a;
     uint32_t ub = b;
@@ -77,8 +77,8 @@ template<> inline int32_t saturatedSum<int32_t>(int32_t a, int32_t b)
 
 inline bool signedSubtractInt32Overflows(int32_t a, int32_t b, int32_t& result)
 {
-#if COMPILER_HAS_CLANG_BUILTIN(__builtin_ssub_overflow) && !(defined __clang_major__ && __clang_major__ < 7)
-    return __builtin_ssub_overflow(a, b, &result);
+#if COMPILER_HAS_CLANG_BUILTIN(__builtin_sub_overflow) && !(defined __clang_major__ && __clang_major__ < 7)
+    return __builtin_sub_overflow(a, b, &result);
 #else
     uint32_t ua = a;
     uint32_t ub = b;
@@ -114,9 +114,12 @@ template<typename UnsignedIntegralType> constexpr std::enable_if_t<std::is_integ
     return sum < a ? std::numeric_limits<UnsignedIntegralType>::max() : sum;
 }
 
-template<typename IntegralType, typename... ArgumentTypes> constexpr uint32_t saturatedSum(IntegralType value, ArgumentTypes... arguments)
+template<typename IntegralType, typename NextType, typename... ArgumentTypes> constexpr IntegralType saturatedSum(IntegralType value, NextType next, ArgumentTypes... arguments)
 {
-    return saturatedSum<IntegralType>(value, saturatedSum<IntegralType>(arguments...));
+    if constexpr (!sizeof...(arguments))
+        return saturatedSum<IntegralType>(value, static_cast<IntegralType>(next));
+    else
+        return saturatedSum<IntegralType>(value, saturatedSum<IntegralType>(static_cast<IntegralType>(next), arguments...));
 }
 
 }

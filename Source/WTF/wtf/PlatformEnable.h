@@ -803,9 +803,10 @@
    being unified, and the Windows port also does not currently have an
    implementation for the freezing mechanism anyway. For simplicity, we just
    disable both the use of unified Config record and config freezing for the
-   Windows port.
+   Windows port. Classic AmigaOS also lacks virtual memory protection and
+   its Hunk objects cannot express page-aligned static storage.
 */
-#if OS(WINDOWS)
+#if OS(WINDOWS) || OS(AMIGAOS3)
 #define ENABLE_UNIFIED_AND_FREEZABLE_CONFIG_RECORD 0
 #else
 #define ENABLE_UNIFIED_AND_FREEZABLE_CONFIG_RECORD 1

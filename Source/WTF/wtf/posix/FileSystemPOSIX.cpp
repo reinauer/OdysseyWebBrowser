@@ -29,7 +29,6 @@
 #include "config.h"
 #include <wtf/FileSystem.h>
 
-#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #if !OS(AROS)
@@ -222,7 +221,7 @@ String stringFromFileSystemRepresentation(const char* path)
 #if OS(MORPHOS) || OS(AMIGAOS) // TODO: Check this
 	return String(path, strlen(path), MIBENUM_SYSTEM);
 #endif
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS3)
 	return String(path, strlen(path));
 #endif
 #else
@@ -255,8 +254,13 @@ String openTemporaryFile(const String& tmpPath, const String& prefix, PlatformFi
 
     char buffer[PATH_MAX];
 #if PLATFORM(MUI)
-	stccpy(buffer, fileSystemRepresentation(tmpPath).data(), sizeof(buffer));
 	auto prefixadd = fileSystemRepresentation(prefix);
+#if OS(AMIGAOS3)
+    if (snprintf(buffer, sizeof(buffer), "%s", fileSystemRepresentation(tmpPath).data()) >= sizeof(buffer))
+        goto end;
+#else
+	stccpy(buffer, fileSystemRepresentation(tmpPath).data(), sizeof(buffer));
+#endif
 	if (0 == AddPart(buffer, prefixadd.data(), sizeof(buffer)))
 		goto end;
     if (strlen(buffer) >= PATH_MAX - 7)
@@ -280,7 +284,7 @@ String openTemporaryFile(const String& tmpPath, const String& prefix, PlatformFi
 #if OS(MORPHOS) || OS(AMIGAOS) // TODO: Check this
 	return String(buffer, strlen(buffer), MIBENUM_SYSTEM);
 #endif
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS3)
 	return String(buffer, strlen(buffer));
 #endif
 #else
@@ -307,7 +311,7 @@ void setTemporaryFilePathForPrefix(const char * tmpPath, const String& prefix)
 #if OS(MORPHOS) || OS(AMIGAOS) // TODO: Check this
 	tmpPathPrefixes.set(prefix, String(tmpPath, strlen(tmpPath), MIBENUM_SYSTEM));
 #endif
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS3)
 	tmpPathPrefixes.set(prefix, String(tmpPath, strlen(tmpPath)));
 #endif
 #endif
@@ -324,7 +328,7 @@ String openTemporaryFile(const String& prefix, PlatformFileHandle& handle, const
 #if OS(MORPHOS) || OS(AMIGAOS)
 	return openTemporaryFile(String(tmpDir, strlen(tmpDir), MIBENUM_SYSTEM), prefix, handle, suffix);
 #endif
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS3)
 	return openTemporaryFile(String(tmpDir, strlen(tmpDir)), prefix, handle, suffix);
 #endif
 #else

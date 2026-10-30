@@ -25,6 +25,9 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <sys/types.h>
+
 #if OS(UNIX) || OS(AMIGAOS)
 #include <unistd.h>
 #endif
@@ -57,7 +60,7 @@ inline ProcessID getCurrentProcessID()
 	return FindTask(0)->tc_ETask->UniqueID;
 #elif PLATFORM(MUI) && !OS(AMIGAOS)
     // FIXME: wrong for 64-bits
-    return (int) (IPTR) FindTask(NULL);
+    return static_cast<ProcessID>(reinterpret_cast<uintptr_t>(FindTask(NULL)));
 #else
     return getpid();
 #endif

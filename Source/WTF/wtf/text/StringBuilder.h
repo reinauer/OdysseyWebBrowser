@@ -73,6 +73,12 @@ public:
     void appendCharacter(LChar) = delete;
     void appendCharacter(char) = delete;
     void appendCharacter(UChar32);
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, int>, int> = 0>
+    void appendCharacter(Integer character)
+    {
+        static_assert(sizeof(Integer) == sizeof(UChar32));
+        appendCharacter(static_cast<UChar32>(character));
+    }
 
     void appendSubstring(const String&, unsigned offset, unsigned length = String::MaxLength);
     WTF_EXPORT_PRIVATE void appendQuotedJSONString(const String&);

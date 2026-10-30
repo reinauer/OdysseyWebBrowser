@@ -41,7 +41,7 @@ static Seconds timevalToSeconds(const struct timeval& value)
 
 std::optional<CPUTime> CPUTime::get()
 {
-#if OS(AROS)
+#if OS(AROS) || OS(AMIGAOS3)
 	return std::nullopt;
 #else
     struct rusage resource { };

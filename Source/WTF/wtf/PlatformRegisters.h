@@ -88,6 +88,8 @@ inline PlatformRegisters& registersFromUContext(ucontext_t* ucontext)
 #else
 
 struct PlatformRegisters {
+    // On AmigaOS3 this points at Exec's saved PC/SR/D0-D7/A0-A6 frame.
+    // The integer registers are therefore included in the scanned stack.
     void* stackPointer;
 };
 

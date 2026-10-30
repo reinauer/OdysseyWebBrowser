@@ -559,8 +559,15 @@ inline constexpr bool observesOverflow<AssertNoOverflow>() { return ASSERT_ENABL
 
 template <typename U, typename V, typename R> static inline bool safeAdd(U lhs, V rhs, R& result)
 {
-    return ArithmeticOperations<U, V, R>::add(lhs, rhs, result);
+#if COMPILER(GCC_COMPATIBLE)
+    R temporary;
+    if (__builtin_add_overflow(lhs, rhs, &temporary))
+        return false;
+    result = temporary;
     return true;
+#else
+    return ArithmeticOperations<U, V, R>::add(lhs, rhs, result);
+#endif
 }
 
 template <class OverflowHandler, typename U, typename V, typename R, typename = std::enable_if_t<!std::is_scalar<OverflowHandler>::value>>
@@ -574,7 +581,15 @@ static inline bool safeAdd(U lhs, V rhs, R& result)
 
 template <typename U, typename V, typename R> static inline bool safeSub(U lhs, V rhs, R& result)
 {
+#if COMPILER(GCC_COMPATIBLE)
+    R temporary;
+    if (__builtin_sub_overflow(lhs, rhs, &temporary))
+        return false;
+    result = temporary;
+    return true;
+#else
     return ArithmeticOperations<U, V, R>::sub(lhs, rhs, result);
+#endif
 }
 
 template <class OverflowHandler, typename U, typename V, typename R, typename = std::enable_if_t<!std::is_scalar<OverflowHandler>::value>>
@@ -588,7 +603,15 @@ static inline bool safeSub(U lhs, V rhs, R& result)
 
 template <typename U, typename V, typename R> static inline bool safeMultiply(U lhs, V rhs, R& result)
 {
+#if USE(MUL_OVERFLOW)
+    R temporary;
+    if (__builtin_mul_overflow(lhs, rhs, &temporary))
+        return false;
+    result = temporary;
+    return true;
+#else
     return ArithmeticOperations<U, V, R>::multiply(lhs, rhs, result);
+#endif
 }
 
 template <typename U, typename V, typename R> static inline bool safeDivide(U lhs, V rhs, R& result)

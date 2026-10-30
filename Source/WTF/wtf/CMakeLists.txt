@@ -1,4 +1,6 @@
 set(WTF_PUBLIC_HEADERS
+    amigaos3/ConservativeScan.h
+    amigaos3/ThreadContext.h
     ASCIICType.h
     AggregateLogger.h
     Algorithms.h
@@ -560,7 +562,7 @@ if (NOT USE_SYSTEM_MALLOC)
 endif ()
 
 if (NOT "${PORT}" STREQUAL "MorphOS")
-if (ATOMICS_REQUIRE_LIBATOMIC)
+if (ATOMICS_REQUIRE_LIBATOMIC OR AmigaOS3)
     list(APPEND WTF_LIBRARIES atomic)
 endif ()
 endif ()
@@ -580,7 +582,11 @@ if (CMAKE_CXX_COMPILER MATCHES ".*ppc-morphos.*")
 endif ()
 
 if ("${PORT}" STREQUAL "MUI")
-  list(APPEND WTF_LIBRARIES "-lpthread -athread=native")
+  if (AmigaOS3)
+    list(APPEND WTF_LIBRARIES pthread AmigaOS3::Support)
+  else ()
+    list(APPEND WTF_LIBRARIES "-lpthread -athread=native")
+  endif ()
 endif ()
 
 WEBKIT_FRAMEWORK_DECLARE(WTF)

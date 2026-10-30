@@ -1,0 +1,164 @@
+--- a/pthreads/pthread.c
++++ b/pthreads/pthread.c
+@@ -2,6 +2,8 @@
+  Copyright (C) 2014 Szilard Biro
+  Copyright (C) 2018 Harry Sintonen
+  Copyright (C) 2019/20 Stefan "Bebbo" Franke - AmigaOS 3 port / bug fixes
++
++ Altered for Odyssey AmigaOS3: stable thread records and TLS key storage.
+ 
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+@@ -57,8 +59,6 @@
+ #define NEWLIST(a) NewList(a)
+ 
+ #include <stabs.h>
+-
+-#define INITIALSIZE 1
+ 
+ #ifndef IPTR
+ #define IPTR ULONG
+@@ -117,11 +117,14 @@
+ 	jmp_buf jmp;
+ } ThreadInfo;
+ 
+-static ThreadInfo *_threads;
++// Records contain list sentinels and are cached across user callbacks.
++// Keep their addresses stable for the lifetime of the process.
++static ThreadInfo *_threads[PTHREAD_THREADS_MAX];
+ static unsigned numThreads;
+ static struct SignalSemaphore thread_sem;
+-static TLSKey *_tlskeys;
+-static unsigned numTlskeys;
++// Fixed, zero-initialized key slots also avoid relocating readers.
++static TLSKey _tlskeys[PTHREAD_KEYS_MAX];
++static unsigned numTlskeys = PTHREAD_KEYS_MAX;
+ static struct SignalSemaphore tls_sem;
+ 
+ //
+@@ -152,7 +155,7 @@
+ 
+ 	// TODO: more robust error handling?
+ 	if (thread < numThreads)
+-		return &_threads[thread];
++		return _threads[thread];
+ 
+ 	return 0;
+ }
+@@ -165,7 +168,7 @@
+ 
+ // 0 is main task, First thread id will be 1 so that it is different than default value of pthread_t
+ 	for (i = 0; i < numThreads; i++) {
+-		if (_threads[i].task == task)
++		if (_threads[i]->task == task)
+ 			break;
+ 	}
+ 
+@@ -216,22 +219,6 @@
+ 	if (i == PTHREAD_KEYS_MAX) {
+ 		ReleaseSemaphore(&tls_sem);
+ 		return EAGAIN;
+-	}
+-
+-	if (i == numTlskeys) {
+-		// resize the thread's storage.
+-		unsigned n = numTlskeys + numTlskeys + 2;
+-		if (n > PTHREAD_KEYS_MAX)
+-			n = PTHREAD_KEYS_MAX;
+-
+-		TLSKey *t = (TLSKey*) realloc(_tlskeys, n * sizeof(TLSKey));
+-		if (!t) {
+-			ReleaseSemaphore(&tls_sem);
+-			return EAGAIN;
+-		}
+-
+-		_tlskeys = t;
+-		numTlskeys = n;
+ 	}
+ 
+ 	tls = &_tlskeys[i];
+@@ -1511,7 +1498,7 @@
+ 	}
+ 	ReleaseSemaphore(&tls_sem);
+ 
+-	// inf may be invalid due to realloc
++	// The record remains stable across callbacks and thread creation.
+ 	ObtainSemaphore(&thread_sem);
+ 	inf = GetThreadInfo(pid);
+ 	inf->ret = ret;
+@@ -1552,26 +1539,17 @@
+ 	}
+ 
+ 	if (threadnew == numThreads) {
+-		// resize the thread's storage.
+-		unsigned n = numThreads + numThreads + 2;
+-
+-		D(bug("** %s(resize to %ld)\n", __FUNCTION__, n));
+-
+-		if (n > PTHREAD_THREADS_MAX)
+-			n = PTHREAD_THREADS_MAX;
+-
+-		if (n != numThreads) {
+-			ThreadInfo *t = (ThreadInfo*) realloc(_threads, n * sizeof(ThreadInfo));
+-			if (!t) {
+-				ReleaseSemaphore(&thread_sem);
+-				return EAGAIN;
+-			}
+-
+-			memset(&t[numThreads], 0, (n - numThreads) * sizeof(ThreadInfo));
+-
+-			_threads = t;
+-			numThreads = n;
++		ThreadInfo *record = calloc(1, sizeof(ThreadInfo));
++		if (!record) {
++			ReleaseSemaphore(&thread_sem);
++			return EAGAIN;
+ 		}
++		// Readers do not hold thread_sem. Publish the slot and high-water
++		// mark together without allowing a reader to see a NULL record.
++		Forbid();
++		_threads[numThreads] = record;
++		++numThreads;
++		Permit();
+ 	}
+ 
+ 	// prepare the ThreadInfo structure
+@@ -1648,11 +1626,15 @@
+ 	ObtainSemaphore(&thread_sem);
+ 	inf = GetThreadInfo(thread);
+ 	D(bug("%s(%ld, inf=%8lx, fini=%ld, detach=%ld, started=%ld)\n", __FUNCTION__, thread, inf, (int)(inf ? inf->finished : 0), (int)(inf ? inf->attr.detachstate : 0), inf->started));
+-	if (inf == NULL || !inf->task)
++	if (inf == NULL || !inf->task) {
++		ReleaseSemaphore(&thread_sem);
+ 		return ESRCH;
+-
+-	if (inf->attr.detachstate)
+-		return EINVAL;
++	}
++
++	if (inf->attr.detachstate) {
++		ReleaseSemaphore(&thread_sem);
++		return EINVAL;
++	}
+ 
+ 	// busy yield loop...
+ 	while (!inf->started || !inf->finished) {
+@@ -2037,13 +2019,12 @@
+ 	InitSemaphore(&tls_sem);
+ 
+ 	// reserve ID 0 for the main thread
+-	_threads = (ThreadInfo*) malloc(sizeof(ThreadInfo) * INITIALSIZE);
+-	if (!_threads)
++	_threads[0] = calloc(1, sizeof(ThreadInfo));
++	if (!_threads[0])
+ 		exit(10);
+-	memset(_threads, 0, sizeof(ThreadInfo) * INITIALSIZE);
+-	numThreads = INITIALSIZE;
+-
+-	ThreadInfo *inf = &_threads[0];
++	numThreads = 1;
++
++	ThreadInfo *inf = _threads[0];
+ #ifdef __AMIGA__
+ 	inf->task = SysBase->ThisTask;
+ #else

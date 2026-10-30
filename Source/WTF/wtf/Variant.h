@@ -60,9 +60,9 @@
 
 #if !COMPILER(CLANG) || WTF_CPP_STD_VER >= 14
 
-#if !OS(AMIGAOS)
+#if OS(MORPHOS)
 extern "C" { void dprintf(const char *,...); }
-#else
+#elif OS(AMIGAOS)
 #include <proto/exec.h>
 #define dprintf DebugPrintF
 #endif

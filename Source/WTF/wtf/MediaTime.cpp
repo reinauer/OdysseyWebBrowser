@@ -133,7 +133,7 @@ MediaTime MediaTime::createWithDouble(double doubleTime, uint32_t timeScale)
 
     while (doubleTime * timeScale >= maxPlusOne<int64_t>)
         timeScale /= 2;
-    return MediaTime(static_cast<int64_t>(std::round(doubleTime * timeScale)), timeScale, Valid);
+    return MediaTime(static_cast<int64_t>(::round(doubleTime * timeScale)), timeScale, Valid);
 }
 
 float MediaTime::toFloat() const

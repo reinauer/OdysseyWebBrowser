@@ -138,6 +138,9 @@ const char* Thread::normalizeThreadName(const char* threadName)
 
 void Thread::initializeInThread()
 {
+#if OS(AMIGAOS3)
+    m_amigaContext.initialize();
+#endif
     if (m_stack.isEmpty())
         m_stack = StackBounds::currentThreadStackBounds();
     m_savedLastStackTop = stack().origin();
@@ -275,6 +278,9 @@ void Thread::didExit()
         // So we need to separate m_isShuttingDown from m_didExit.
         Locker locker { m_mutex };
         m_didExit = true;
+#if OS(AMIGAOS3)
+        m_amigaContext.didExit();
+#endif
     }
 }
 

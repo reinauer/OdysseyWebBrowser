@@ -156,6 +156,14 @@ inline size_t bitCount(unsigned bits)
     return (((bits + (bits >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;
 }
 
+// uint32_t can be unsigned long on 32-bit ABIs.
+template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+inline size_t bitCount(Integer bits)
+{
+    static_assert(sizeof(unsigned) == sizeof(Integer));
+    return bitCount(static_cast<unsigned>(bits));
+}
+
 inline size_t bitCount(uint64_t bits)
 {
     return bitCount(static_cast<unsigned>(bits)) + bitCount(static_cast<unsigned>(bits >> 32));

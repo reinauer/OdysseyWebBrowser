@@ -84,7 +84,20 @@
 #include <windows.h>
 #endif
 
-#if PLATFORM(MUI)
+#if OS(AMIGAOS3)
+#include <sys/time.h>
+static long get_GMT_offset()
+{
+    struct timezone zone { };
+    return gettimeofday(nullptr, &zone) ? 0 : zone.tz_minuteswest * 60;
+}
+
+static long get_DST_offset()
+{
+    const char* offset = getenv("DST_OFFSET");
+    return offset ? strtol(offset, nullptr, 10) : 0;
+}
+#elif PLATFORM(MUI)
 extern long get_DST_offset(void);
 extern long get_GMT_offset(void);
 #endif
@@ -113,7 +126,11 @@ const int firstDayOfMonth[2][12] = {
 #if !OS(WINDOWS) || HAVE(TM_GMTOFF)
 static inline void getLocalTime(const time_t* localTime, struct tm* localTM)
 {
-#if HAVE(LOCALTIME_R)
+#if OS(AMIGAOS3)
+    time_t adjusted = *localTime - get_GMT_offset() - get_DST_offset();
+    gmtime_r(&adjusted, localTM);
+    localTM->tm_isdst = get_DST_offset() != 0;
+#elif HAVE(LOCALTIME_R)
     localtime_r(localTime, localTM);
 #elif PLATFORM(MUI)
     time_t tmp = *localTime - get_GMT_offset() - get_DST_offset();

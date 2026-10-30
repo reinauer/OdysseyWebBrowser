@@ -148,7 +148,7 @@ inline double timeClip(double t)
 {
     if (std::abs(t) > maxECMAScriptTime)
         return std::numeric_limits<double>::quiet_NaN();
-    return std::trunc(t) + 0.0;
+    return ::trunc(t) + 0.0;
 }
 
 inline double daysFrom1970ToYear(int year)

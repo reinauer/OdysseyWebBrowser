@@ -53,7 +53,7 @@ public:
         return *this << static_cast<uint64_t>(t);
     }
 
-    template<typename T, std::enable_if_t<!std::is_enum<T>::value && !std::is_arithmetic<typename std::remove_const<T>>::value>* = nullptr>
+    template<typename T, std::enable_if_t<!std::is_enum<T>::value && !std::is_arithmetic<std::remove_const_t<T>>::value>* = nullptr>
     Encoder& operator<<(const T& t)
     {
         Coder<T>::encode(*this, t);
@@ -70,6 +70,21 @@ public:
     WTF_EXPORT_PRIVATE Encoder& operator<<(int64_t);
     WTF_EXPORT_PRIVATE Encoder& operator<<(float);
     WTF_EXPORT_PRIVATE Encoder& operator<<(double);
+
+#if OS(AMIGAOS3)
+    // Newlib's int32_t is long. Preserve the 32-bit persistence format
+    // and checksum salt when callers use the distinct native int type.
+    Encoder& operator<<(int value)
+    {
+        static_assert(sizeof(int) == sizeof(int32_t));
+        return *this << static_cast<int32_t>(value);
+    }
+    Encoder& operator<<(unsigned value)
+    {
+        static_assert(sizeof(unsigned) == sizeof(uint32_t));
+        return *this << static_cast<uint32_t>(value);
+    }
+#endif
 
     const uint8_t* buffer() const { return m_buffer.data(); }
     size_t bufferSize() const { return m_buffer.size(); }
