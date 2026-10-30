@@ -64,6 +64,8 @@
 #define OSHEADER "Macintosh; PowerPC MorphOS %u.%u"
 #elif OS(AMIGAOS)
 #define OSHEADER "PowerPC AmigaOS"
+#elif OS(AMIGAOS3)
+#define OSHEADER "m68k AmigaOS"
 #endif
 static const char verfmt[] = "Mozilla/5.0 (" OSHEADER "; Odyssey Web Browser; rv:" VERSION ") AppleWebKit/" WEBKITVER " (KHTML, like Gecko) OWB/" VERSION " Safari/" WEBKITVER;
 static char odysseyuseragent[sizeof(verfmt) + 2 * (10 - 2)];
@@ -345,7 +347,7 @@ void init_useragents()
             }
         }
         if (!hasDefault || !foundDefault) {
-            auto* un = (struct useragentnode*)GetHead((struct List*)&useragent_list);
+            auto* un = (struct useragentnode*)FIRSTNODE(&useragent_list);
             un->uan_flags |= UA_DEFAULT | UA_SHOW;
             free(un->uan_status);
             un->uan_status = strdup(GSI(MSG_USERAGENTLIST_STATUS_DEFAULT));

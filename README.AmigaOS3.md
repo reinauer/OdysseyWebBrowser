@@ -289,11 +289,14 @@ The complete WebCore static archive builds against the native dependency
 archives, including the networking, font, image, layout and DOM sources.
 Native UI helpers also have focused compilation and runtime coverage.
 See [browser build notes](Tools/AmigaOS3/BROWSER.md).
-Remaining work includes complete frontend compilation, native graphics
-integration and browser startup. Known frontend blockers include the OpenURL
-SDK and a classic RTG alpha-blending path. Then bring up
-local HTML and network pages,
-and measure resource use before choosing memory limits. The initial OS3
+The complete frontend now compiles and `OWB` links against the matched
+October 29 SDK, runtime and dependencies. Native RTG blending and separator
+drawing pass focused pixel checks. The native browser now opens and renders
+the HTTP fixture, passing DOM/Unicode, CSS layout, canvas, JavaScript and
+localStorage assertions. Further network, navigation and shutdown tests are
+in progress. See [matched SDK profiles](Tools/AmigaOS3/SDK-PROFILES.md) and
+[upstream runtime findings](Tools/AmigaOS3/UPSTREAM.md). Measure resource use
+after startup and browsing work before choosing memory limits. The initial OS3
 build disables video and MediaSource because no native FFmpeg stack is
 staged. OS4 multimedia/GPU features need a separate port. Native component tests are not proof
 of a complete browser, physical hardware behavior or a minimum-RAM target.

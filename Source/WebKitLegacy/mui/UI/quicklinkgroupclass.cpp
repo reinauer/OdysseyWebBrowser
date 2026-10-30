@@ -492,8 +492,13 @@ static struct Hook LayoutFonc_hook = {
 #else
 static struct Hook LayoutFonc_hook = {
     {NULL, NULL},
+#if OS(AMIGAOS3)
+    (HOOKFUNC) HookEntry,
+    (HOOKFUNC) LayoutFonc,
+#else
     (APTR) HookEntry,
     (APTR) LayoutFonc,
+#endif
     NULL
 };
 #endif

@@ -5,7 +5,27 @@
 #include <intuition/classes.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <strings.h>
+#include <exec/lists.h>
+#ifdef __cplusplus
+#include <type_traits>
+#endif
+#include "amigaos3graphics.h"
 #include "include/macros/compilers.h"
+
+#ifdef __cplusplus
+using _Msg_ = std::remove_pointer<Msg>::type;
+#endif
+
+#define stricmp strcasecmp
+
+static inline BOOL IsMinListEmpty(const struct MinList* list)
+{
+    return list->mlh_Head == (const struct MinNode*)&list->mlh_Tail;
+}
+
+#define WritePixelArrayAlpha AmigaOS3WritePixelArrayAlpha
+#define WritePixelArrayPremultipliedAlpha AmigaOS3WritePixelArrayPremultipliedAlpha
 
 typedef ULONG IPTR;
 typedef LONG SIPTR;

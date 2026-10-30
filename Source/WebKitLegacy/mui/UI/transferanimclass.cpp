@@ -275,6 +275,9 @@ DEFMMETHOD(Draw)
             stride = cairo_image_surface_get_stride(data->surface);
         }
 
+#if OS(AMIGAOS3)
+        bool premultiplied = src && stride;
+#endif
         // Fall back to builtin animation
         if(!src || !stride)
         {
@@ -282,7 +285,14 @@ DEFMMETHOD(Draw)
             stride = THROBBER_WIDTH * sizeof(ULONG);
         }
 
-        WritePixelArrayAlpha((APTR) src, data->imagenum * data->imagewidth, 0, stride, _rp(obj), mleft + (mwidth - data->imagewidth) / 2, mtop + (mheight - data->imageheight) / 2, data->imagewidth, data->imageheight, 0xffffffff); //data->animate ? 0xffffffff : 0x4fffffff);
+#if OS(AMIGAOS3)
+        auto writeAlpha = premultiplied ? AmigaOS3WritePixelArrayPremultipliedAlpha
+            : AmigaOS3WritePixelArrayAlpha;
+        writeAlpha((APTR)
+#else
+        WritePixelArrayAlpha((APTR)
+#endif
+            src, data->imagenum * data->imagewidth, 0, stride, _rp(obj), mleft + (mwidth - data->imagewidth) / 2, mtop + (mheight - data->imageheight) / 2, data->imagewidth, data->imageheight, 0xffffffff); //data->animate ? 0xffffffff : 0x4fffffff);
     }
 
     return 0;

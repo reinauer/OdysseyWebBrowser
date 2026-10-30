@@ -51,6 +51,8 @@ LONG   locale_timezone_offset;
 ULONG locale_init(void)
 {
     locale = OpenLocale(NULL);
+    if (!locale)
+        return FALSE;
 
     locale_timezone_offset = -locale->loc_GMTOffset * 60;
 
@@ -75,6 +77,12 @@ ULONG locale_init(void)
 
 void locale_cleanup(void)
 {
-    CloseLocale(locale);
-    CloseCatalog(catalog);
+    if (catalog) {
+        CloseCatalog(catalog);
+        catalog = NULL;
+    }
+    if (locale) {
+        CloseLocale(locale);
+        locale = NULL;
+    }
 }

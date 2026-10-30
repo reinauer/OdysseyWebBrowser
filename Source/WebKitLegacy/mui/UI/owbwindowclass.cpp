@@ -270,7 +270,7 @@ static LONG AppMsgFunc(void)
 {
     struct AppMessage **x = (struct AppMessage **) REG_A1;
     Object *window = (Object *) REG_A2;
-#elif OS(AMIGAOS)
+#elif OS(AMIGAOS) || OS(AMIGAOS3)
 static LONG AppMsgFunc(struct Hook *h,Object *window, AppMessage **x)
 {    
 #endif    
@@ -299,6 +299,10 @@ static struct Hook AppMsgHook = { {0, 0}, (HOOKFUNC)&AppMsgHookGate, NULL, NULL 
 #endif
 #if OS(AMIGAOS)
 static struct Hook AppMsgHook = { {0, 0}, (HOOKFUNC)&AppMsgFunc, NULL, NULL };
+#endif
+#if OS(AMIGAOS3)
+// HookEntry translates the classic a0/a2/a1 hook registers to this C callback.
+static struct Hook AppMsgHook = { {0, 0}, (HOOKFUNC)HookEntry, (HOOKFUNC)AppMsgFunc, NULL };
 #endif
 #if OS(AROS)
 static struct Hook AppMsgHook = { {0, 0}, NULL, NULL, NULL };

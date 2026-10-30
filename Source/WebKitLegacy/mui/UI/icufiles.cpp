@@ -2,6 +2,54 @@
 #include <libraries/mui.h>
 #include <proto/muimaster.h>
 
+#if OS(AMIGAOS3)
+#include <unicode/uclean.h>
+#include <unicode/udata.h>
+#include <unicode/icudataver.h>
+#include <unicode/uversion.h>
+#include <cstdio>
+#include <cstring>
+
+// The OS3 build links a complete big-endian ICU package into the executable.
+// Referencing its real entry point also prevents archive dead stripping.
+extern "C" const char U_ICUDATA_ENTRY_POINT[];
+
+ULONG icu_check(void)
+{
+    UErrorCode status = U_ZERO_ERROR;
+    udata_setCommonData(U_ICUDATA_ENTRY_POINT, &status);
+    u_init(&status);
+    UVersionInfo dataVersion = { 0 };
+    u_getDataVersion(dataVersion, &status);
+    char message[384];
+    if (U_FAILURE(status)) {
+        std::snprintf(message, sizeof(message),
+            "Odyssey could not initialize its built-in Unicode data.\n"
+            "ICU error: %s\nPlease reinstall this Odyssey build.",
+            u_errorName(status));
+    } else {
+        UVersionInfo libraryVersion, expectedLibraryVersion, expectedDataVersion;
+        u_getVersion(libraryVersion);
+        u_versionFromString(expectedLibraryVersion, U_ICU_VERSION);
+        u_versionFromString(expectedDataVersion, U_ICU_DATA_VERSION);
+        if (!std::memcmp(libraryVersion, expectedLibraryVersion, sizeof(UVersionInfo))
+            && !std::memcmp(dataVersion, expectedDataVersion, sizeof(UVersionInfo)))
+            return TRUE;
+        char libraryText[U_MAX_VERSION_STRING_LENGTH];
+        char dataText[U_MAX_VERSION_STRING_LENGTH];
+        u_versionToString(libraryVersion, libraryText);
+        u_versionToString(dataVersion, dataText);
+        std::snprintf(message, sizeof(message),
+            "Odyssey's built-in ICU libraries and Unicode data do not match.\n"
+            "Library: %s (expected %s)\nData: %s (expected %s)\n"
+            "Please reinstall this Odyssey build.",
+            libraryText, U_ICU_VERSION, dataText, U_ICU_DATA_VERSION);
+    }
+    MUI_RequestA(NULL, NULL, 0, "Unicode initialization failed", "Quit", message, NULL);
+    return FALSE;
+}
+#else
+
 #if OS(AMIGAOS)
 #define ACCESS_READ SHARED_LOCK
 #endif
@@ -4657,3 +4705,5 @@ ULONG icu_check(void)
 
     return passed;
 }
+
+#endif // OS(AMIGAOS3)

@@ -110,7 +110,7 @@ void fontconfig_testcache(void)
     //kprintf("[fontcache thread] doing stuff\n");
 
 #if !USE_SHARED_FONTCONFIG
-#if !OS(AROS)
+#if !OS(AROS) && !OS(AMIGAOS3)
    fontconfig_progress_callback = myfontconfig_progress_callback;
 #else
    myfontconfig_progress_callback(1, 2, "FONTS:Loading");
@@ -171,7 +171,7 @@ void fontconfig_testcache(void)
                     int size = sizeof(struct familynode) + strlen((char *) file) + 1;
                     struct familynode *fn = (struct familynode *) malloc(size);
 
-                    if(n)
+                    if(fn)
                     {
                         strcpy(fn->family, (char *) file);
                         ADDTAIL(&family_list, (APTR) fn);

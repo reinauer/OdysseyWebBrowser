@@ -48,3 +48,18 @@ target_link_libraries(odyssey-random-test PRIVATE
 add_executable(odyssey-runtime-test RuntimeTest.cpp)
 target_link_libraries(odyssey-runtime-test PRIVATE
     pthread odyssey-amigaos3-platform atomic)
+
+add_executable(odyssey-saturation-test SaturatedArithmeticTest.cpp)
+target_link_libraries(odyssey-saturation-test PRIVATE
+    pthread odyssey-amigaos3-platform)
+
+add_executable(odyssey-math-test MathTest.cpp)
+target_link_libraries(odyssey-math-test PRIVATE
+    pthread odyssey-amigaos3-platform atomic)
+
+add_executable(odyssey-graphics-test GraphicsTest.cpp
+    ${ODYSSEY_ROOT}/Source/WebKitLegacy/mui/UI/amigaos3graphics.cpp)
+target_include_directories(odyssey-graphics-test PRIVATE
+    ${ODYSSEY_ROOT}/Source/WebKitLegacy/mui/UI)
+target_link_libraries(odyssey-graphics-test PRIVATE
+    pthread odyssey-amigaos3-platform)

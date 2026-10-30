@@ -12,7 +12,7 @@
 #define POP_DARKEN     1
 #endif
 
-#if !OS(AMIGAOS)
+#if !OS(AMIGAOS) && !OS(AMIGAOS3)
 #ifndef ProcessPixelArray
 VOID ProcessPixelArray(struct RastPort *, ULONG, ULONG, ULONG, ULONG, ULONG, LONG, struct TagItem *);
 #endif
@@ -95,7 +95,11 @@ DEFMMETHOD(Draw)
 
         ULONG vertoffs   = mleft + (mwidth / 2);
 
-#if !OS(AMIGAOS)
+#if OS(AMIGAOS3)
+        if (mheight > 2)
+            AmigaOS3DrawSeparator(rp, vertoffs, mtop + 1, mheight - 2,
+                _pens(obj)[MPEN_SHINE], _pens(obj)[MPEN_SHADOW]);
+#elif !OS(AMIGAOS)
         ProcessPixelArray( rp, vertoffs,     mtop + 1, 1, mheight - 2, POP_BRIGHTEN, 70, NULL);
         ProcessPixelArray( rp, vertoffs - 1, mtop + 1, 1, mheight - 2, POP_DARKEN,   70, NULL);
 #endif

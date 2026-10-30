@@ -9,8 +9,16 @@ list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBKITLEGACY_DIR}/mui/WebCoreSupport"
     "${WEBKITLEGACY_DIR}/mui/Widgets"
     "${WEBKITLEGACY_DIR}/mui/Plugins"
-    "${WEBKITLEGACY_DIR}/mui/UI/AROS/include/"
 )
+
+if (NOT AmigaOS3)
+    list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
+        "${WEBKITLEGACY_DIR}/mui/UI/AROS/include")
+endif()
+
+if (AmigaOS3)
+    list(APPEND WebKitLegacy_SOURCES mui/UI/amigaos3graphics.cpp)
+endif()
 
 list(APPEND WebKitLegacy_SOURCES
     mui/UI/addressbargroupclass.cpp

@@ -226,10 +226,10 @@ APTR MakePrefsPopString(CONST_STRPTR label, CONST_STRPTR def, ULONG id)
     return (obj);
 }
 
-#if OS(MORPHOS) || OS(AMIGAOS)
+#if OS(MORPHOS) || OS(AMIGAOS) || OS(AMIGAOS3)
 ULONG getv(APTR obj, ULONG attr)
 {
-    ULONG val;
+    ULONG val = 0;
     GetAttr(attr, (Object *)obj, &val);
     return val;
 }
@@ -237,7 +237,7 @@ ULONG getv(APTR obj, ULONG attr)
 #if OS(AROS)
 IPTR getv(APTR obj, ULONG attr)
 {
-    IPTR val;
+    IPTR val = 0;
     GetAttr(attr, (Object *)obj, &val);
     return val;
 }

@@ -649,7 +649,9 @@ void WebChromeClient::didFinishLoadingImageForElement(WebCore::HTMLImageElement&
 
 std::unique_ptr<WebCore::DateTimeChooser> WebChromeClient::createDateTimeChooser(WebCore::DateTimeChooserClient&)
 {
-    #if !OS(AMIGAOS)
+    // The current MUI port has no implementation of this chooser API.
+    // Keep native date/time text entry available, as on AmigaOS 4.
+    #if !OS(AMIGAOS) && !OS(AMIGAOS3)
     asm("int3");
     #endif
     return nullptr;

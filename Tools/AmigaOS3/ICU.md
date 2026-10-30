@@ -58,3 +58,18 @@ correctness. The runner records executable and emulator hashes with its output.
 
 The native probe passed all six checks, including concurrent locale work,
 in `build/amigaos3-icu-pthread-math-1/output.txt`.
+
+
+The OS3 browser startup gate in `mui/UI/icufiles.cpp` registers the linked data
+entry point, initializes ICU and verifies both the library and data versions
+against the build headers. It does not require `Resource/icudt49b` or a loose
+ICU data directory. Initialization/version failures show a specific MUI error
+and stop startup. Other platforms retain their existing file checks.
+
+`ICUStartupTest.cpp` runs that actual gate twice with a real MUI library base.
+The extracted browser compile/link commands and SDK identities are recorded in
+`build/amigaos3-icu-startup/manifest.json`. Native outputs are in
+`native-oct14/output.txt` (matched Oct14 SDK and overlay) and
+`native-oct29/output.txt` (current Oct29 compiler/libc with the existing Oct14
+runtime overlay and ICU). This separate mixed-SDK probe validates only the
+startup component; it does not establish compatibility of the entire runtime.

@@ -5,9 +5,13 @@ set(OdysseyWebBrowser_SOURCES
 set(OdysseyWebBrowser_INCLUDE_DIRECTORIES
     "${CAIRO_INCLUDE_DIRS}"
     "${WEBKITLEGACY_DIR}/mui/UI"
-    "${WEBKITLEGACY_DIR}/mui/UI/AROS/include"
     "${DERIVED_SOURCES_WEBCORE_DIR}"
 )
+
+if (NOT AmigaOS3)
+    list(APPEND OdysseyWebBrowser_INCLUDE_DIRECTORIES
+        "${WEBKITLEGACY_DIR}/mui/UI/AROS/include")
+endif()
 
 if (AmigaOS3)
 list(APPEND OdysseyWebBrowser_INCLUDE_DIRECTORIES
@@ -20,6 +24,7 @@ set(OdysseyWebBrowser_LIBRARIES
     WebCore
     JavaScriptCore
     -Wl,--end-group
+    -ldebug
 )
 elseif (AmigaOS4)
 set(OdysseyWebBrowser_LIBRARIES

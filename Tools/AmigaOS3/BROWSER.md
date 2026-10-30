@@ -4,12 +4,13 @@ After building ICU, the pthread C++ runtime and the native dependencies,
 configure the complete browser source graph with the staged prefix:
 
 ```sh
-cmake -S . -B build/amigaos3-browser -G Ninja \
+cmake -S . -B build/amigaos3-browser-oct29 -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
-  -DAMIGAOS3_DEPENDENCY_ROOT="$PWD/build/amigaos3-sdk" \
-  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime" \
+  -DAMIGAOS3_TOOLCHAIN_ROOT=/opt/amiga-16.2-20261029 \
+  -DAMIGAOS3_DEPENDENCY_ROOT="$PWD/build/amigaos3-sdk-oct29" \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime-oct29" \
   -DCMAKE_BUILD_TYPE=Release -DPORT=MUI
-cmake --build build/amigaos3-browser --target WebCore -j4
+cmake --build build/amigaos3-browser-oct29 --target OWB -j4
 ```
 
 This configures successfully against actual m68k archives. Target
@@ -28,18 +29,33 @@ size and SHA256 are recorded in `build/amigaos3-browser/webcore-archive.json`.
 The pass includes the latest curl shutdown lifecycle and libxml2 2.12 const
 error-callback adaptation. PAL and JavaScriptCore prerequisites also compile.
 
-This remains an incomplete browser port. WebKitLegacy's MUI application
-still has separate OpenURL SDK integration, RTG alpha-blit and startup
-`kprintf`/`DumpTaskState` gaps before a complete executable can be linked and
-tested. Cursor routing, keyboard conversion and clipboard notification
+The MUI frontend now has native
+callback bridges, an optional classic OpenURL binding and an RTG alpha
+fallback. The alpha implementation passes actual RTG pixel readback and
+layer-clipping checks; see [GRAPHICS.md](GRAPHICS.md). The complete executable now links as
+`build/amigaos3-browser-oct29/bin/OWB`; the matched build is recorded in
+`browser-build.log` and `browser-relink.log` beside it. The native browser
+launch in `build/amigaos3-browser-launch-2` passes all five page assertions:
+DOM/Unicode, CSS layout, canvas pixels, JavaScript and localStorage. Its
+`live-inspect.png` screenshot was visually inspected and shows the rendered
+page and passing result. This uses the AmigaOS 3.2 guest, Zune68/MUI,
+Picasso96 and a native DOS7 data volume. Network protocols beyond the HTTP
+fixture, navigation persistence and normal shutdown are still being tested.
+Cursor routing, keyboard conversion and clipboard notification
 adapters have focused coverage described below. Archive compilation does
 not establish browser rendering, navigation or complete network behavior.
 
-Run one Ninja process per build directory. This local build's dependency
-log needed recovery after overlapping invocations. The final archive build
-passed, but the next build may conservatively recompile objects; incremental
-rebuild behavior was not validated. Generated bookkeeping diagnostics are
-preserved under `build/amigaos3-browser/ninja-bookkeeping`.
+Run one Ninja process per build directory. A preserved dependency-log snapshot
+has an invalid complete path record at byte 3,768,112: its ID is 10203 but
+10206 is required. Ninja 1.13.2 advances its recovery offset before checking
+that ID, so recovery retains the bad record and loses later dependency
+information on each invocation. This explains repeated full recompiles even
+with a single writer after the original overlapping invocations. See
+`build/amigaos3-probes/ninja-deps-audit.json` and the accompanying snapshot.
+After the current writer exits, preserve and move the damaged `.ninja_deps`
+aside, then run one complete build to regenerate it. Never move or truncate
+the log while Ninja is running. The recovery offset behavior is in
+[Ninja's dependency-log reader](https://github.com/ninja-build/ninja/blob/v1.13.2/src/deps_log.cc).
 
 ## Persistence ABI regression
 
@@ -101,6 +117,5 @@ mask registration, local synchronous draining, hook removal, signal reuse
 and allocation failure. The native guest run is recorded in
 `build/amigaos3-clipboard-notification-2/output.txt` (0 failures, RETURN=0).
 The probe overwrites the disposable guest clipboard. The production
-clipboard and Pasteboard translation units compile; appclass integration
-still encounters the separate missing OpenURL SDK header. Full-browser
+clipboard, Pasteboard and application integration translation units compile. Full-browser
 copy/paste and actual rendered cursor behavior remain unverified.

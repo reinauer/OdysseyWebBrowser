@@ -122,7 +122,11 @@ extern "C"
 #include <proto/layers.h>
 #include <proto/keymap.h>
 #include <clib/macros.h>
+#if OS(AMIGAOS3)
+#include <mui/Calltips_mcc.h>
+#else
 #include <Calltips_mcc.h>
+#endif
 
 #if OS(AROS)
 #undef SetRPAttrs

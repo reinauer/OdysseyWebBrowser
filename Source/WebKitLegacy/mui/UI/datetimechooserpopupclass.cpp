@@ -33,7 +33,11 @@
 
 #include "wtf/text/CString.h"
 
+#if OS(AMIGAOS3)
+#include <mui/Calltips_mcc.h>
+#else
 #include <Calltips_mcc.h>
+#endif
 #include <clib/debug_protos.h>
 
 #include "gui.h"

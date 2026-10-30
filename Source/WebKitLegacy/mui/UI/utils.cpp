@@ -32,12 +32,6 @@
 #include "owb_cat.h"
 #if OS(AMIGAOS3)
 #include "LocalEncodingAmigaOS3.h"
-#include <strings.h>
-
-static int stricmp(const char* a, const char* b)
-{
-    return strcasecmp(a, b);
-}
 #endif
 
 #include <stdio.h>

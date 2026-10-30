@@ -127,12 +127,16 @@ extern void shutdownGlobalFTLWorklist();
 #include <dos/dos.h>
 #include <dos/dostags.h>
 #include <libraries/gadtools.h>
+#if OS(AMIGAOS3)
+#include "amigaos3openurl.h"
+#else
 #include <libraries/openurl.h>
+#include <proto/openurl.h>
+#endif
 #include <mui/Aboutbox_mcc.h>
 #include <workbench/workbench.h>
 #include <workbench/icon.h>
 
-#include <proto/openurl.h>
 #include <proto/utility.h>
 #include <proto/icon.h>
 #include <proto/dos.h>
@@ -157,8 +161,12 @@ extern void shutdownGlobalFTLWorklist();
 
 using namespace WebCore;
 
+#if !OS(AMIGAOS3)
 extern struct Library * OpenURLBase;
-#if  OS(AMIGAOS)
+#endif
+#if OS(AMIGAOS3)
+static const char* _ProgramName = "PROGDIR:OWB";
+#elif OS(AMIGAOS)
 const char * _ProgramName = "PROGDIR:Odyssey";
 #else
 extern char * _ProgramName;
@@ -520,6 +528,9 @@ AROS_UFP3
     AROS_UFHA(IPTR *, params, A1)
 );
 #define REXXHOOK(name, param)   static const struct Hook name = { { NULL, NULL }, (APTR)&Rexx, NULL, (APTR)(param) };
+#elif OS(AMIGAOS3)
+static LONG Rexx(struct Hook*, Object*, IPTR*);
+#define REXXHOOK(name, param) static const struct Hook name = { { NULL, NULL }, (HOOKFUNC)HookEntry, (HOOKFUNC)Rexx, (APTR)(param) }
 #elif OS(AMIGAOS)
 #define REXXHOOK(name, param)	static const struct Hook name = { { NULL, NULL }, (HOOKFUNC)&Rexx, NULL, (APTR)(param) }
 static LONG Rexx(struct Hook *h,Object * obj,	IPTR *params);
@@ -591,7 +602,7 @@ AROS_UFH3
 )
 {
     AROS_USERFUNC_INIT
-#elif OS(AMIGAOS)
+#elif OS(AMIGAOS) || OS(AMIGAOS3)
 static LONG Rexx(struct Hook *h, Object * obj, IPTR *params)
 {   
 #endif
@@ -2598,7 +2609,10 @@ void prefs_update(Object *obj, struct Data *data)
         CurlContext::singleton().sslHandle().setIgnoreSSLErrors(true);
     else
         CurlContext::singleton().sslHandle().setIgnoreSSLErrors(false);
-    CurlContext::singleton().sslHandle().setCACertPath(String(data->certificate_path));
+    if (data->certificate_path[0])
+        CurlContext::singleton().sslHandle().setCACertPath(String(data->certificate_path));
+    else
+        CurlContext::singleton().sslHandle().clearCACertInfo();
 
     sharedPreferences->postPreferencesChangesNotification();
 }
@@ -2900,6 +2914,9 @@ DEFSMETHOD(OWBApp_SaveFormState)
 
 DEFSMETHOD(OWBApp_MailTo)
 {
+#if OS(AMIGAOS3)
+    amigaOS3OpenURL(msg->url);
+#else
     if(OpenURLBase)
     {
         struct TagItem tagitem;
@@ -2908,6 +2925,7 @@ DEFSMETHOD(OWBApp_MailTo)
 
         URL_OpenA((char *) msg->url, &tagitem);
     }
+#endif
 
     return 0;
 }

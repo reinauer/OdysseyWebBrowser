@@ -371,7 +371,11 @@ extern const char * const __stringtable[];
 #endif
 
 #ifndef REMTAIL
+#ifdef __cplusplus
+#define REMTAIL(l) ([&]() -> APTR { using ::Node; return RemTail((struct List*)(l)); }())
+#else
 #define REMTAIL(l) ((APTR)RemTail((struct List*)l))
+#endif
 #endif
 
 #ifndef REMOVE

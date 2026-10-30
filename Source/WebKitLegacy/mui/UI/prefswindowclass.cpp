@@ -839,7 +839,10 @@ DEFNEW
 
                                 Child, HGroup,
                                     Child, MakeLabel(GSI(MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH)),
-#ifndef __amigaos4__
+#if OS(AMIGAOS3)
+                                    // An empty override uses AmiSSL's installed trust store.
+                                    Child, str_certificatepath = (Object *) MakeFileString(GSI(MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH), "", MAKE_ID('S','S','C','P')),
+#elif !defined(__amigaos4__)
                                     Child, str_certificatepath = (Object *) MakeFileString(GSI(MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH), "ENV:SYS/Certificates/ca-bundle.crt", MAKE_ID('S','S','C','P')),
 #else
                                     Child, str_certificatepath = (Object *) MakeFileString(GSI(MSG_PREFSWINDOW_SECURITY_CERTIFICATE_PATH), "PROGDIR:curl-ca-bundle.crt", MAKE_ID('S','S','C','P')),

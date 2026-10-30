@@ -75,7 +75,7 @@ void close_dictionary();
 void destroy_application(void);
 void close_libs(void);
 
-#if !defined(__amigaos4__)
+#if !defined(__amigaos4__) && !defined(__amigaos3__) && !(defined(__amigaos__) && defined(__mc68000__))
 extern "C"
 {
 	int raise(int sig)
@@ -165,6 +165,9 @@ struct Library * KeymapBase = NULL;
 struct Library * CharsetsBase = NULL;
 struct Library * SpellCheckerBase = NULL;
 struct Library * ExpatBase = NULL;
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+struct Library * CyberGfxBase = NULL;
+#endif
 #endif
 
 static ULONG __morphos2 = FALSE;
@@ -531,11 +534,20 @@ ULONG open_libs(void)
 		return FALSE;
 	}
 
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+	// Expat is linked statically; RTG drawing uses the classic CGX ABI.
+	if (!(CyberGfxBase = OpenLibrary("cybergraphics.library", 41)))
+	{
+		fprintf(stderr, "Failed to open cybergraphics.library V41.\n");
+		return FALSE;
+	}
+#else
 	if(!(ExpatBase = OpenLibrary("expat.library", 0)))
 	{
 		fprintf(stderr, "Failed to open expat.library.\n");
 		return FALSE;
 	}
+#endif
 
 	struct Library * ibase = (struct Library *) IntuitionBase;
 	if(ibase)
@@ -583,6 +595,13 @@ ULONG open_libs(void)
 
 void close_libs(void)
 {
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+	if (CyberGfxBase)
+	{
+		CloseLibrary(CyberGfxBase);
+		CyberGfxBase = NULL;
+	}
+#endif
 	if(MUIMasterBase)
 	{
 		CloseLibrary(MUIMasterBase);
@@ -651,16 +670,23 @@ Object *create_application(char *url)
 {
 	Object *obj = NULL;
 
-	locale_init();
+	if (!locale_init())
+		return NULL;
 
 	if(classes_init())
 	{
 	    methodstack_init();
 		obj = (Object *) NewObject(getowbappclass(), NULL, MA_OWBBrowser_URL, (IPTR) url, TAG_DONE);
+		if (!obj)
+		{
+			methodstack_cleanup();
+			classes_cleanup();
+		}
 	}
 	else
 	{
 		fprintf(stderr, "Failed to create internal classes.\n");
+		classes_cleanup();
 	}
 
 	return obj;
@@ -740,6 +766,7 @@ void main_loop(void)
 
 int main (int argc, char* argv[])
 {
+	int result = 20;
 	#ifdef __amigaos4__	
 	// save tc_UserData on run.	
 	struct Task *CurrentTask = FindTask(NULL);
@@ -784,6 +811,7 @@ int main (int argc, char* argv[])
 			if(app)
 			{
 				main_loop();
+				result = 0;
 			}
 
 			destroy_application();
@@ -801,5 +829,5 @@ int main (int argc, char* argv[])
 	CurrentTask->tc_UserData = olduserdata;
 	#endif
 
-    return 0;
+    return result;
 }

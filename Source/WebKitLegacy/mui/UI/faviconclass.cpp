@@ -400,7 +400,12 @@ DEFMMETHOD(Draw)
 
             if(src)
             {
-                WritePixelArrayAlpha((APTR) src, 0, 0, stride, _rp(obj), mleft, mtop, FAVICON_WIDTH*FACTOR, FAVICON_HEIGHT*FACTOR, 0xffffffff);
+#if OS(AMIGAOS3)
+                WritePixelArrayPremultipliedAlpha((APTR) src,
+#else
+                WritePixelArrayAlpha((APTR) src,
+#endif
+                    0, 0, stride, _rp(obj), mleft, mtop, FAVICON_WIDTH*FACTOR, FAVICON_HEIGHT*FACTOR, 0xffffffff);
             }
         }
     }

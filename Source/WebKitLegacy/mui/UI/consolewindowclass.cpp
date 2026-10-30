@@ -103,6 +103,13 @@ DEFSMETHOD(ConsoleWindow_Add)
     if(e)
     {
         GETDATA;
+#if OS(AMIGAOS3)
+        // DateStamp uses the local 1978 epoch expected by Amiga2Date.
+        struct DateStamp stamp;
+        DateStamp(&stamp);
+        Amiga2Date(stamp.ds_Days * 86400UL + stamp.ds_Minute * 60UL
+            + stamp.ds_Tick / TICKS_PER_SECOND, &e->clockdata);
+#else
         struct timeval timeval;
 
 #if defined(__amigaos4__)
@@ -111,6 +118,7 @@ DEFSMETHOD(ConsoleWindow_Add)
         GetSysTime(&timeval);
 #endif
         Amiga2Date(timeval.tv_secs, &e->clockdata);
+#endif
 
         stccpy(e->message, msg->message, sizeof(e->message));
 

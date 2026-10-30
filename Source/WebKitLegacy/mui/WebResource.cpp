@@ -55,7 +55,11 @@ WebResource* WebResource::createInstance(RefPtr<WebCore::SharedBuffer>&& data, c
 
 void WebResource::initWithData( RefPtr<WebCore::SharedBuffer>&& data, String url, String mimeType, String textEncodingName, String frameName)
 {
+#if OS(AMIGAOS3)
+    kprintf("WebResource::initWithData\n");
+#else
     dprintf("WebResource::initWithData\n");
+#endif
     m_data = data;
     m_url = URL({ }, String(url));
     m_mimeType = String(mimeType);

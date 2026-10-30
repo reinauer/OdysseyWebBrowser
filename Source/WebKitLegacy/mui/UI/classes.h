@@ -323,7 +323,7 @@ enum {
     MA_OWBWindow_AddressBarGroup,
     MA_OWBWindow_FastLinkGroup,
     MA_OWBWindow_FastLinkParentGroup,
-#ifdef __amigaos4__
+#if defined(__amigaos4__) || defined(__amigaos3__)
     MA_OWBWindow_NetworkLedsGroup,
 #else
     MA_OWBWindow_NetworkLedsGroupBROKEN,

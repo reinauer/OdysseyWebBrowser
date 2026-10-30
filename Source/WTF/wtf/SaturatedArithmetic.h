@@ -34,6 +34,7 @@
 #include <limits>
 #include <stdint.h>
 #include <stdlib.h>
+#include <type_traits>
 #include <wtf/Compiler.h>
 
 namespace WTF {
@@ -107,6 +108,22 @@ template<> inline int32_t saturatedDifference<int32_t>(int32_t a, int32_t b)
 #endif
     return result;
 }
+
+#if OS(AMIGAOS3)
+// The native ABI uses long for int32_t. LayoutUnit uses the distinct,
+// equally wide int type, which needs its own specialization.
+template<> inline int saturatedSum<int>(int a, int b)
+{
+    static_assert(sizeof(int) == sizeof(int32_t));
+    return saturatedSum<int32_t>(a, b);
+}
+
+template<> inline int saturatedDifference<int>(int a, int b)
+{
+    static_assert(sizeof(int) == sizeof(int32_t));
+    return saturatedDifference<int32_t>(a, b);
+}
+#endif
 
 template<typename UnsignedIntegralType> constexpr std::enable_if_t<std::is_integral_v<UnsignedIntegralType> && !std::is_signed_v<UnsignedIntegralType>, UnsignedIntegralType> saturatedSum(UnsignedIntegralType a, UnsignedIntegralType b)
 {

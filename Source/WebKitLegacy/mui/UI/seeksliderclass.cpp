@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include "gui.h"
+#include "OdysseyRawKeyCodes.h"
 
 /******************************************************************
  * seeksliderclass
@@ -110,10 +111,10 @@ DEFMMETHOD(HandleEvent)
                      switch ( Code )
                      {
 #ifndef __amigaos4__ // TODO: Check this with extended mouse
-                         case NM_WHEEL_UP:
+                         case RAWKEY_NM_WHEEL_UP:
                             //
                             return MUI_EventHandlerRC_Eat;
-                         case NM_WHEEL_DOWN:
+                         case RAWKEY_NM_WHEEL_DOWN:
                             //
                             return MUI_EventHandlerRC_Eat;
 #endif
