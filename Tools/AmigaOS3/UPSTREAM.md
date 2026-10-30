@@ -1,6 +1,12 @@
 # SDK upstream audit
 
-Read-only audit on 2026-10-29. Nothing was published. Our original native
+For the current port status and upstream PR links, see
+[STATUS.md](../../STATUS.md). The audit below preserves the revisions and
+validation boundaries of the original investigation; PR preparation checks
+newer upstream revisions separately.
+
+Original read-only audit on 2026-10-29; nothing was published during that
+audit. Our original native
 failure evidence used `/opt/amiga-16.2-20261014`. During this session the
 `/opt/amiga-16.2` symlink changed to `/opt/amiga-16.2-20261029` (AmigaDev
 16.2-rc21). These are different SDKs; the original overlay must not be treated
