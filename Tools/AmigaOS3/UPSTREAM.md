@@ -20,8 +20,8 @@ Current primary-source revisions inspected:
 | Allocator synchronization — AmigaPorts/newlib-cygwin | [`newlib/libc/sys/amigaos/mallocr.cpp`](https://github.com/AmigaPorts/newlib-cygwin/blob/fb0a76ceacae0c7c1442d5a1e00be6ba7f669de2/newlib/libc/sys/amigaos/mallocr.cpp) still has empty mutex functions. Its apparent RAII locks do nothing. The installed Oct29 allocator also has no real locking around MemMap mutations. | Two pthreads repeatedly allocate, fill/check, reallocate and free distinct buffers. `RuntimeTest.cpp` and the threaded `icu-test.cpp` exposed corruption with the old SDK; recursive Exec-semaphore wrappers fixed it. Keep the new-SDK baseline separate from those original native results. |
 | TLS key allocation — AmigaPorts/aros-stuff | [`pthreads/pthread_key.c`](https://github.com/AmigaPorts/aros-stuff/blob/bf81f53fe4a3f309d8ebabaa893a1c740c39b3de/pthreads/pthread_key.c) still grows `_tlskeys` with `realloc` without initializing new slots. Delete/set-specific also calculate a slot pointer before acquiring the lock, allowing relocation between those operations. The Oct29 installed object retains the same growth pattern. | The isolated `PthreadKeyTest.c` reproduces both defects against the unchanged installed Oct29 archive: only 6/64 keys allocate with legal nonzero fresh storage; set/delete return EINVAL for valid keys when the table moves while they wait on its semaphore. See the controlled native comparison below. |
 | Condition absolute timeout — AmigaPorts/aros-stuff | `pthread_cond.c` includes unsigned NDK `timeval` fields before the BSD `timersub` macro. The negative-microseconds branch is optimized away; the installed Oct29 object performs two subtractions without borrow normalization. Expired absolute deadlines also wrap into long unsigned timer waits. | Fresh-profile `PlatformTest.cpp` stopped at its condition timeout; `build/amigaos3-cond-time-oct29` separately hangs for a future deadline crossing a second. Disassembly is `build/amigaos3-probes/current-pthread-cond.dis`. The new-profile patch computes a signed wide seconds difference, normalizes the borrow, validates nanoseconds, and preserves mutex unlock/relock for expired waits. The repaired profile passes native cross-second, expired and invalid-nanosecond tests in `build/amigaos3-platform-oct29-fixed/output.txt`. |
-| Double-to-float rounding — AmigaPorts/newlib-cygwin | [`__truncdfsf2.c`](https://github.com/AmigaPorts/newlib-cygwin/blob/fb0a76ceacae0c7c1442d5a1e00be6ba7f669de2/newlib/libc/sys/amigaos/__truncdfsf2.c) still delegates to `IEEEDPTieee`. Our native software-math fixture truncated where GCC's conversion requires nearest-even rounding. | Convert a volatile double `4294967295.0` to float: expected `4294967296`, observed `4294967040`. Include halfway ties and signed values from `MathTest.cpp` / `RuntimeTest.cpp`. |
-| Compiler double arithmetic semantics — AmigaPorts/newlib-cygwin | [`__adddf3.c`](https://github.com/AmigaPorts/newlib-cygwin/blob/fb0a76ceacae0c7c1442d5a1e00be6ba7f669de2/newlib/libc/sys/amigaos/__adddf3.c), `__muldf3.c`, `__divdf3.c` and related overrides still delegate to native math libraries. In the tested 68020/no-FPU AmigaOS3 fixture, overflow saturated at DBL_MAX rather than producing infinity; NaN/comparison behavior also needs the compiler helper contract. | Volatile `DBL_MAX * 2`, `DBL_MAX + DBL_MAX`, `0.0 / 0.0`, unordered comparisons and gradual underflow. `MathTest.cpp`, `build/amigaos3-c99-math-soft-2/output.txt` and `jsc-test.js` contain native evidence. GCC's own m68k software helpers fix these tests. Report exact OS math-library versions; this is not evidence that generic GCC arithmetic is broken. |
+| Double-to-float rounding — AmigaPorts/newlib-cygwin | [`__truncdfsf2.c`](https://github.com/AmigaPorts/newlib-cygwin/blob/fb0a76ceacae0c7c1442d5a1e00be6ba7f669de2/newlib/libc/sys/amigaos/__truncdfsf2.c) still delegates to `IEEEDPTieee`. Our native software-math fixture truncated where GCC's conversion requires nearest-even rounding. | Fresh unchanged Oct29 baseline reproduces truncation for volatile double `4294967295.0` and positive/negative odd halfway ties. See the current arithmetic comparison below; this is separate from the Oct14 `MathTest.cpp` evidence. |
+| Compiler double arithmetic semantics — AmigaPorts/newlib-cygwin | [`__adddf3.c`](https://github.com/AmigaPorts/newlib-cygwin/blob/fb0a76ceacae0c7c1442d5a1e00be6ba7f669de2/newlib/libc/sys/amigaos/__adddf3.c), `__muldf3.c`, `__divdf3.c` and related overrides still delegate to native math libraries. Fresh Oct29 native tests with double-math libraries 38.1/37.1 saturate overflow at DBL_MAX rather than infinity. The tested NaN propagation and comparison cases pass in this configuration. | The unchanged SDK baseline below checks volatile `DBL_MAX * 2`, `DBL_MAX + DBL_MAX`, and `DBL_MAX / 0.5`; all saturate. It also distinguishes passing infinity/NaN operations from failing overflow. Old repaired-runtime evidence remains in `MathTest.cpp` and `jsc-test.js`; do not extrapolate it to other OS math-library versions. |
 
 The original old-SDK failures are established native emulator results. Source
 inspection shows the remaining implementations above are unchanged in the
@@ -55,6 +55,61 @@ Two additional Oct29 findings are independent of the older runtime evidence:
   checks, including real `mktime` use, in
   `build/amigaos3-integer-alias/native/output.txt`. Its link map confirms
   neither conflicting compiler-helper archive member was extracted.
+
+## Current unmodified SDK arithmetic baseline
+
+The 2026-10-30 native run in
+`build/amigaos3-sdk-math-baseline/native/output.txt` uses only the unchanged
+`/opt/amiga-16.2-20261029` SDK (AmigaDev 16.2-rc21, GCC version string
+`16.2.1b 20261010182711`). Its standalone C source is `Tools/AmigaOS3/SDKMathBaseline.c`, byte-identical
+to the tested private `baseline.c` beside `manifest.json` and `link.map`. No Odyssey overlay, compiler repair objects,
+allocator wrapper or pthread library is linked. The link map confirms that
+conversion, arithmetic and comparison helpers come from the installed
+`libm020/libc.a`. Volatile operands prevent constant folding; results are
+printed as raw IEEE bit patterns, avoiding floating-point printf conversion.
+
+The actual guest identity is Exec 47.7, AttnFlags `0003` (68020, no FPU),
+`mathieeedoubbas.library` 38.1, `mathieeedoubtrans.library` 37.1 and
+`mathieeesingbas.library` 47.1. The installed `version.library` reports 45.3.
+This is the existing mixed installed-system fixture booted with the 3.2
+A1200 ROM, not a claim that all of its disk libraries are from OS 3.2.
+The manifest records SDK inputs, loaded versions and disk-library hashes;
+the runner additionally hashes the ROM, emulator, configuration and every
+copied guest file.
+
+| Operation | Observed bits | Required bits |
+| --- | --- | --- |
+| Double 4294967295 to float | `4f7fffff` | `4f800000` |
+| Double 1.000000178813934326171875 to float | `3f800001` | `3f800002` |
+| Negative of that halfway value to float | `bf800001` | `bf800002` |
+| DBL_MAX times 2, plus DBL_MAX, divided by 0.5 | `7fefffff:ffffffff` | `7ff00000:00000000` |
+
+There are 18 checks and six mismatches. Infinity propagation through
+addition, multiplication and division passes. Invalid infinity operations,
+zero divided by zero, NaN propagation and all six NaN comparison predicates
+also pass. Unsigned UINT_MAX converts to double correctly, confirming the
+upstream unsigned-conversion repair. Gradual underflow and other rounding
+modes were not tested by this minimal baseline. Zero exit status and the
+`COMPLETE unmodified SDK arithmetic baseline` marker mean observation
+completed; they do not mean the SDK passed the arithmetic checks.
+
+```sh
+/opt/amiga-16.2-20261029/bin/m68k-amigaos-gcc -m68020 -O2 -g -fno-builtin \
+  Tools/AmigaOS3/SDKMathBaseline.c \
+  -Wl,-Map,build/amigaos3-sdk-math-baseline/link.map -lamiga \
+  -o build/amigaos3-sdk-math-baseline/baseline
+python3 Tools/AmigaOS3/run-platform-test.py \
+  --system build/amigaos3-amissl-fixture \
+  --rom "$HOME/AmigaOS/AmigaOS-3.2-full/ROM/kicka1200.rom" \
+  --emulator "$HOME/git/WinUAE_mac/WinUAE/bin/winuae" \
+  --binary build/amigaos3-sdk-math-baseline/baseline \
+  --output build/amigaos3-sdk-math-baseline/native-repeat \
+  --gdb-port 2351 --success-marker 'COMPLETE unmodified SDK arithmetic baseline'
+```
+
+No new concurrent allocator failure is claimed by this run. The allocator
+candidate above remains a source/disassembly finding for Oct29 plus separate
+older native evidence; the single-thread baseline does not test its locking.
 
 ## Controlled native pthread TLS comparison
 
@@ -174,10 +229,11 @@ split pthread members and uses the matching SDK ABI throughout. Canonical GCC
 arithmetic helpers remain selected consistently; that is not a claim that
 the already corrected unsigned-conversion constant is still defective.
 
-The standalone TLS baseline/repair tests, condition-timeout evidence and
-division-link reproducer provide concrete starting points for small upstream
-submissions. Include exact SDK and OS identities. For allocator and floating
-arithmetic reports, retain the original native evidence but also reproduce
-the individual failure against the current unmodified SDK; source inspection
-alone is insufficient to label an old result as a new-SDK execution result.
+The standalone TLS baseline/repair tests, condition-timeout evidence,
+division-link reproducer and current arithmetic baseline provide concrete
+starting points for small upstream submissions. Include exact SDK and OS
+identities, particularly the loaded math-library versions. For the allocator
+report, retain the original native evidence but also reproduce the individual
+failure against the current unmodified SDK; source inspection alone is
+insufficient to label an old result as a new-SDK execution result.
 No issue, PR or external message has been sent by this audit.
