@@ -1509,6 +1509,6 @@ if (USE_VERSION_STAMPER)
         VERBATIM)
 endif ()
 
-if (NOT "${PORT}" STREQUAL "MUI" OR (AmigaOS3 AND AMIGAOS3_JSC_ONLY))
+if (NOT "${PORT}" STREQUAL "MUI" OR AmigaOS3)
 add_subdirectory(shell)
 endif ()

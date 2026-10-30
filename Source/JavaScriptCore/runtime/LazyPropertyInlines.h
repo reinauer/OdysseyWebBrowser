@@ -46,9 +46,10 @@ void LazyProperty<OwnerType, ElementType>::initLater(const Func&)
     // Logically we just want to stuff the function pointer into m_pointer, but then we'd be sad
     // because a function pointer is not guaranteed to be a multiple of anything. The tag bits
     // may be used for things. We address this problem by indirecting through a global const
-    // variable. The "theFunc" variable is guaranteed to be native-aligned, i.e. at least a
-    // multiple of 4.
-    static const FuncType theFunc = &callFunc<Func>;
+    // variable. Reserve both tag bits explicitly: native pointer alignment is
+    // only two bytes on m68k and does not guarantee a multiple of four.
+    alignas(alignof(FuncType) > 4 ? alignof(FuncType) : 4) static const FuncType theFunc = &callFunc<Func>;
+    RELEASE_ASSERT(!(bitwise_cast<uintptr_t>(&theFunc) & (lazyTag | initializingTag)));
     m_pointer = lazyTag | bitwise_cast<uintptr_t>(&theFunc);
 }
 
