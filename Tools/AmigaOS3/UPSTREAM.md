@@ -189,6 +189,19 @@ diagnostic declarations match `bf81f53f` and are not application APIs.
 
 ## Configuration and Odyssey portability
 
+Native environment import is a newlib/startup integration candidate, not a
+compiler ABI defect. The inspected SDK startup never populates POSIX
+`environ` from DOS `ENV:` or process-local variables, so ordinary `getenv`
+does not observe Shell configuration. Odyssey now imports text globals and
+real local `LV_VAR` overrides before C++ constructors using the SDK's
+priority-0 init list. Its `EnvironmentTest.cpp` passes actual native
+constructor-time lookups, precedence, nontrivial values, copied lifetime
+and alias/binary exclusions in
+`build/amigaos3-environment/native-2/output.txt`. See
+[Environment.md](Environment.md) for the bounded snapshot and case-sensitive
+POSIX semantics. Upstream integration should define those semantics rather
+than describe the behavior as a compiler code-generation bug.
+
 The current SDK still reports `--enable-threads=no`, `Thread model: single`,
 and no `_GLIBCXX_HAS_GTHREADS`. The toolchain
 [`Makefile`](https://github.com/AmigaPorts/m68k-amigaos-gcc/blob/b1518f3bea770b5e02150d3f603da7794eb0a6a6/Makefile)

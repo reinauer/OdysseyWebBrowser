@@ -2,8 +2,11 @@
 # wrappers as an object target so they precede libc even for static builds.
 # The descriptor wrapper also preserves real terminal detection when SDK
 # open.o supplies a public isatty that only recognizes descriptor numbers.
+# Keep native environment startup in the same always-linked object set;
+# an unreferenced initializer inside a static archive would be discarded.
 if (NOT TARGET AmigaOS3Allocator)
     add_library(AmigaOS3Allocator OBJECT
+        "${CMAKE_CURRENT_LIST_DIR}/../WTF/wtf/amigaos3/Environment.c"
         "${CMAKE_CURRENT_LIST_DIR}/../WTF/wtf/amigaos3/Malloc.c"
         "${CMAKE_CURRENT_LIST_DIR}/../WTF/wtf/amigaos3/TTY.c")
     add_link_options(

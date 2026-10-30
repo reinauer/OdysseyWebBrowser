@@ -49,6 +49,11 @@ add_executable(odyssey-runtime-test RuntimeTest.cpp)
 target_link_libraries(odyssey-runtime-test PRIVATE
     pthread odyssey-amigaos3-platform atomic)
 
+add_executable(odyssey-environment-test EnvironmentTest.cpp)
+target_compile_definitions(odyssey-environment-test PRIVATE _DEFAULT_SOURCE=1)
+target_link_libraries(odyssey-environment-test PRIVATE
+    pthread odyssey-amigaos3-platform)
+
 add_executable(odyssey-saturation-test SaturatedArithmeticTest.cpp)
 target_link_libraries(odyssey-saturation-test PRIVATE
     pthread odyssey-amigaos3-platform)
