@@ -1,16 +1,23 @@
 # ICU for AmigaOS 3
 
-Run from the Odyssey checkout with Python 3.12 or newer:
+Use the matched October 29 compiler, runtime and dependency prefixes in
+[SDK-PROFILES.md](SDK-PROFILES.md). The mutable `/opt/amiga-16.2` symlink and
+the scripts' original default output paths must not be combined with the
+older October 14 runtime. Build the matched runtime first, then run from
+the Odyssey checkout with Python 3.12 or newer:
 
 ```sh
-python3 Tools/AmigaOS3/build-cxx-runtime.py
-python3 Tools/AmigaOS3/build-icu.py --toolchain /opt/amiga-16.2 \
-    --cxx-runtime build/amigaos3-sdk/cxx-runtime
+python3 Tools/AmigaOS3/build-icu.py --toolchain /opt/amiga-16.2-20261029 \
+    --build-root build/amigaos3-icu-oct29 \
+    --prefix build/amigaos3-sdk-oct29 \
+    --cxx-runtime build/amigaos3-sdk/cxx-runtime-oct29
 ```
 
 The script downloads the official ICU 62.2 source archive, checks its SHA-256,
 patches and builds it, and stages native 68020 static libraries and headers in
-`build/amigaos3-sdk`. It preserves other dependencies in that prefix. Override
+the selected prefix (`build/amigaos3-sdk-oct29` above). It preserves other
+dependencies there. The original default `build/amigaos3-sdk` belongs to the
+historical profile and is retained unchanged. Override
 `--build-root`, `--prefix` and `--jobs` as needed; output directories must stay
 inside the checkout. A changed source patch requires a fresh build root.
 
@@ -45,9 +52,9 @@ integration. The runtime overlay also supplies explicit unsigned-to-float,
 double-to-float and IEEE double arithmetic helper objects, overriding the
 SDK libc math defects. The probe gives each worker a 256 KiB stack.
 
-To build against the port's pthread-enabled C++ runtime, first run
-`build-cxx-runtime.py`, then pass
-`--cxx-runtime build/amigaos3-sdk/cxx-runtime` to this script. It uses a
+To build against the port's pthread-enabled C++ runtime, follow the matching
+profile's `build-cxx-runtime.py` command, then pass that exact prefix as
+`--cxx-runtime` to this script. It uses a
 separate target build directory so objects built with the SDK's original C++
 headers cannot be reused accidentally.
 
@@ -56,8 +63,11 @@ Run the executable in an AmigaOS 3 guest using `run-platform-test.py` with
 emulator paths. A successful cross-build alone does not establish runtime
 correctness. The runner records executable and emulator hashes with its output.
 
-The native probe passed all six checks, including concurrent locale work,
+The original profile's native probe passed all six checks, including concurrent locale work,
 in `build/amigaos3-icu-pthread-math-1/output.txt`.
+The separately rebuilt October 29 result is
+`build/amigaos3-icu-oct29/native/output.txt`; see the profile manifest for
+its distinct executable and input hashes.
 
 
 The OS3 browser startup gate in `mui/UI/icufiles.cpp` registers the linked data

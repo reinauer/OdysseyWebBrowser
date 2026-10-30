@@ -21,26 +21,47 @@ artificial libssl/libcrypto aliases. Video and related media features
 default off until a native
 decoder stack is available.
 
-The complete WebCore static archive now builds successfully for the native
-target. `build/amigaos3-browser/lib/libWebCoreMUI.a` contains 740 native Amiga
+The original SDK profile's complete WebCore archive built successfully.
+`build/amigaos3-browser/lib/libWebCoreMUI.a` contains 740 native Amiga
 object members (76,962,328 bytes). The final build log is
 `build/amigaos3-browser/webcore-build-final-incremental.log`; member formats,
 size and SHA256 are recorded in `build/amigaos3-browser/webcore-archive.json`.
-The pass includes the latest curl shutdown lifecycle and libxml2 2.12 const
-error-callback adaptation. PAL and JavaScriptCore prerequisites also compile.
+That historical pass includes libxml2 2.12 const error-callback adaptation.
+The current matched October 29 build uses the separate directory above and
+includes PAL, JavaScriptCore, WebCore and the complete MUI frontend.
 
 The MUI frontend now has native
 callback bridges, an optional classic OpenURL binding and an RTG alpha
 fallback. The alpha implementation passes actual RTG pixel readback and
 layer-clipping checks; see [GRAPHICS.md](GRAPHICS.md). The complete executable now links as
-`build/amigaos3-browser-oct29/bin/OWB`; the matched build is recorded in
-`browser-build.log` and `browser-relink.log` beside it. The native browser
+`build/amigaos3-browser-oct29/bin/OWB`; the successful link is recorded in
+`build/amigaos3-browser-oct29/browser-relink.log`. The earlier
+`browser-build.log` ends at the subsequently repaired SDK integer-alias
+link failure. The native browser
 launch in `build/amigaos3-browser-launch-2` passes all five page assertions:
 DOM/Unicode, CSS layout, canvas pixels, JavaScript and localStorage. Its
 `live-inspect.png` screenshot was visually inspected and shows the rendered
 page and passing result. This uses the AmigaOS 3.2 guest, Zune68/MUI,
-Picasso96 and a native DOS7 data volume. Network protocols beyond the HTTP
-fixture, navigation persistence and normal shutdown are still being tested.
+Picasso96 and a native DOS7 data volume. The later
+`build/amigaos3-browser-navigation-60s/result.json` records verified HTTPS
+content and script execution, rejection of wrong-host and untrusted
+certificates, and localStorage retained across navigation and a real reload.
+The basic-page run in `build/amigaos3-browser-quit-1` also exits through the
+real Quit confirmation with `RETURN=0` and `BROWSER_EXIT` in
+`system/browser-output.txt`. Its GDB input logs and screenshots preserve
+that interaction. These results apply to their recorded binary hashes;
+The final `build/amigaos3-browser-release-final/result.json` also passes
+Unicode WebSocket echo, HTTP while TLS remains pending, cancellation,
+subsequent HTTP, verified HTTPS, navigation/reload storage, and normal Quit
+with `RETURN=0`. Tracing is disabled. Its OWB SHA256 is
+`74b6ade751d6e79d4b81299dbd6632e8b112a95b0c17325f434a5645b4c0ce94`.
+Automatic TopSites screenshots are disabled as documented in INSTALL.txt;
+their synchronous work otherwise delays network callbacks.
+The preceding `browser-network-final` run proves native page focus,
+typing and clicking through trusted DOM events, and also exits normally.
+The final binary differs only in the disabled tracing path, with no
+frontend changes. Shutdown during an active connection remains a separate
+case. See [BROWSER-FIXTURE.md](BROWSER-FIXTURE.md).
 Cursor routing, keyboard conversion and clipboard notification
 adapters have focused coverage described below. Archive compilation does
 not establish browser rendering, navigation or complete network behavior.
@@ -52,9 +73,10 @@ that ID, so recovery retains the bad record and loses later dependency
 information on each invocation. This explains repeated full recompiles even
 with a single writer after the original overlapping invocations. See
 `build/amigaos3-probes/ninja-deps-audit.json` and the accompanying snapshot.
-After the current writer exits, preserve and move the damaged `.ninja_deps`
-aside, then run one complete build to regenerate it. Never move or truncate
-the log while Ninja is running. The recovery offset behavior is in
+If reusing that damaged historical build directory, first stop its writer,
+preserve and move the damaged `.ninja_deps` aside, then run one complete
+build to regenerate it. Never move or truncate the log while Ninja is
+running. The recovery offset behavior is in
 [Ninja's dependency-log reader](https://github.com/ninja-build/ninja/blob/v1.13.2/src/deps_log.cc).
 
 ## Persistence ABI regression
@@ -65,13 +87,13 @@ encoding, including the checksum's type salt. Its arithmetic SFINAE test
 also now examines the actual type instead of the remove_const trait.
 
 ```sh
-cmake --build build/amigaos3-browser --target amigaos3-persistence-test -j4
+cmake --build build/amigaos3-browser-oct29 --target amigaos3-persistence-test -j4
 ```
 
-Run `build/amigaos3-browser/bin/amigaos3-persistence-test` through
+Run `build/amigaos3-browser-oct29/bin/amigaos3-persistence-test` through
 `run-platform-test.py`, with success marker
-`PASS native persistence integer format`. The CMake-built executable
-passed on the AmigaOS 3.2 guest in
+`PASS native persistence integer format`. The earlier profile's CMake-built
+executable passed on the AmigaOS 3.2 guest in
 `build/amigaos3-persistence-cmake/output.txt`. It compares encoded bytes
 and checksums against int32_t/uint32_t, round-trips INT_MIN, INT_MAX and
 UINT_MAX, and rejects a truncated integer. This is native guest evidence,

@@ -12,12 +12,18 @@ Start from a Shell:
 
   CD Work:Applications/Odyssey
   Stack 2097152
+  Set OWB_DISABLE_TOPSITES_SCREENSHOTS 1
   OWB "https://example.com/"
 
 Replace the example installation path with your own. Do not overwrite
 existing preferences or databases when upgrading an existing installation;
 stage this bundle in a new directory first. The older OWB.readme retained
 from Dist describes the original distribution; this file describes OS3.
+
+The tested network configuration disables automatic TopSites screenshots.
+Their synchronous rendering delayed network callbacks in native tests.
+The Set command above selects this existing option for the launched browser;
+omit it to retain automatic screenshots. TopSites history remains enabled.
 
 Runtime requirements
 

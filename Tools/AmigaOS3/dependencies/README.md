@@ -1,14 +1,24 @@
 # Native browser dependencies
 
-Build the non-ICU dependency stack with the same 68020/newlib ABI as Odyssey:
+Use [SDK-PROFILES.md](../SDK-PROFILES.md) for the matched October 29 runtime,
+ICU and dependency build order. Do not combine the mutable
+`/opt/amiga-16.2` symlink with the original October 14 dependency/runtime
+prefix. After building the matching runtime and ICU, build the non-ICU
+stack with explicit inputs:
 
 ```sh
-python3 Tools/AmigaOS3/build-dependencies.py --smoke
+python3 Tools/AmigaOS3/build-dependencies.py \
+  --toolchain /opt/amiga-16.2-20261029 \
+  --build-root build/amigaos3-deps-oct29 \
+  --prefix build/amigaos3-sdk-oct29 \
+  --cxx-runtime build/amigaos3-sdk/cxx-runtime-oct29 --smoke
 ```
 
-The default compiler is `/opt/amiga-16.2`. Downloads, extracted upstream
-sources, logs and objects are in `build/amigaos3-deps-other`. The install
-prefix is `build/amigaos3-sdk`, shared with `build-icu.py`. This script does
+The script's historical defaults are compiler `/opt/amiga-16.2`, build root
+`build/amigaos3-deps-other` and install prefix `build/amigaos3-sdk`, shared
+with `build-icu.py`. Those old paths and their evidence remain intact;
+the explicit command above selects the separate current profile instead.
+This script does
 not replace that prefix or modify the compiler installation. It requires
 Python 3.12+, CMake, Ninja, make, pkg-config, curl and the native build tools
 used by the upstream releases. Individual package names can be supplied to
@@ -19,6 +29,10 @@ modifying the staged dependency archives:
 
 ```sh
 python3 Tools/AmigaOS3/build-dependencies.py --probes-only \
+  --toolchain /opt/amiga-16.2-20261029 \
+  --build-root build/amigaos3-deps-oct29 \
+  --prefix build/amigaos3-sdk-oct29 \
+  --cxx-runtime build/amigaos3-sdk/cxx-runtime-oct29 \
   --smoke --font-smoke --sqlite-smoke --sqlite-volume DH1: --psl-smoke
 ```
 
@@ -108,14 +122,14 @@ its private static dependencies along with pthread and libatomic.
 
 ## Validation
 
-`--smoke` links `build/amigaos3-deps-other/dependency-smoke` through the
+`--smoke` links `dependency-smoke` in the selected build root through the
 staged static pkg-config interfaces. Run it in the existing isolated guest
 workflow, with success marker `PASS dependency smoke` and a stack of at
 least 256 KiB. It checks Cairo/pixman ARGB pixels, PNG encoding, fontconfig
 patterns, XML parsing and XSLT transformation, directory enumeration,
 file sizes/types/timestamps, DOS record locking and errno failures.
 
-The graphics/XML/filesystem smoke passed in the 68020 AmigaOS 3.2 WinUAE
+The original profile's graphics/XML/filesystem smoke passed in the 68020 AmigaOS 3.2 WinUAE
 guest: `build/amigaos3-dependencies-final/output.txt`, with input hashes in the
 adjacent `inputs.json`. This does not establish complete font discovery,
 browser rendering, networking or physical hardware correctness. WebP and

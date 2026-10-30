@@ -8,8 +8,9 @@ so the port builds a matching C++ runtime overlay in the workspace.
 
 ## SDK identity and rebuilding
 
-Runtime evidence below belongs to the original SDK snapshot and the exact
-recorded binaries. The `/opt/amiga-16.2` symlink now resolves to the newer
+Each runtime result below belongs to its recorded SDK and binary. The
+original-profile results remain historical; the matched October 29 results
+are identified separately. The `/opt/amiga-16.2` symlink resolves to the newer
 20261029 SDK; the same path or GCC release number does not establish that
 its libraries and headers match the earlier build. See [UPSTREAM.md](UPSTREAM.md)
 for the newer SDK audit. Existing manifests and native results are retained
@@ -59,6 +60,7 @@ those revisions (the builder never updates external repositories itself):
 
 ```sh
 python3 Tools/AmigaOS3/build-cxx-runtime.py --profile oct29 \
+    --toolchain /opt/amiga-16.2-20261029 \
     --gcc-source build/amigaos3-source-repos/gcc \
     --pthread-source build/amigaos3-source-repos/aros-stuff \
     --build-dir build/amigaos3-gthreads-oct29 \
@@ -79,10 +81,13 @@ The final C++ runtime relink also passes TLS, static guards, nested once,
 ownership, allocator contention, integer helpers/div/ldiv boundaries and all
 63 available TLS key slots (`build/amigaos3-runtime-oct29-final/output.txt`).
 `native-validation.json` beside the new manifest records that manifest hash
-and the exact guest binary/output hashes. Full JSC and browser validation
-remain separate requirements.
+and the exact guest binary/output hashes. The matching full-graph JSC shell
+subsequently passed 2,142 checks in
+`build/amigaos3-jsc-oct29-environment/output.txt`, including the native
+environment startup import. Full browser results are
+recorded separately in [BROWSER.md](BROWSER.md).
 
-## Build the overlay
+## Reproduce the original overlay
 
 The recipe reads GCC sources from a local Git repository, without changing
 its checkout or writing to `/opt`. The default checkout is
@@ -91,11 +96,12 @@ its checkout or writing to `/opt`. The default checkout is
 ```sh
 git clone --branch amiga16.2 https://github.com/AmigaPorts/gcc.git gcc-amiga
 git clone https://github.com/AmigaPorts/aros-stuff.git aros-stuff
-python3 Tools/AmigaOS3/build-cxx-runtime.py --gcc-source gcc-amiga \
+python3 Tools/AmigaOS3/build-cxx-runtime.py --profile legacy \
+    --toolchain /opt/attic/amiga-16.2-20261014 --gcc-source gcc-amiga \
     --pthread-source aros-stuff
 ```
 
-The default pinned source revision is
+This historical profile's pinned source revision is
 `e141137a28e4c36e45c8dc9064f413ddb17099bd`. The recipe builds the 68020,
 static, pthread-backed libstdc++ with atomic shared-pointer ownership and
 rebuilds GCC's actual `emutls.c` against its POSIX gthread adapter. Other
@@ -198,17 +204,17 @@ at the compiler-helper level rather than hidden in individual math calls.
 Build the reproducible probe in the configured browser tree:
 
 ```sh
-cmake --build build/amigaos3-browser --target amigaos3-math-test -j4
+cmake --build build/amigaos3-browser-oct29 --target amigaos3-math-test -j4
 python3 Tools/AmigaOS3/run-platform-test.py \
   --system build/amigaos3-amissl-fixture \
   --rom /Users/stepan/AmigaOS/AmigaOS-3.2-full/ROM/kicka1200.rom \
   --emulator /Users/stepan/git/WinUAE_mac/WinUAE/bin/winuae \
-  --binary build/amigaos3-browser/bin/amigaos3-math-test \
+  --binary build/amigaos3-browser-oct29/bin/amigaos3-math-test \
   --output build/amigaos3-c99-math-check \
   --success-marker 'math test: 0 failures' --gdb-port 2350
 ```
 
-Use a new output directory and an unused port. Native evidence is in
+Use a new output directory and an unused port. Original-profile evidence is in
 `build/amigaos3-c99-math-soft-2/output.txt`: signed zero, ties, adjacent values,
 subnormals, real versus intermediate hypot overflow, Inf/NaN propagation,
 comparison predicates, cube roots and concurrent arithmetic all pass.

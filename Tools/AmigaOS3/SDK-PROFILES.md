@@ -70,10 +70,13 @@ Native component results on the final matched profile:
 | Public suffixes | Cookie boundaries, IPv6 addresses and IDN passed | `amigaos3-deps-oct29/native-psl-support/output.txt` |
 | Filesystem on real FFS | 59 checks, zero failures, including cwd and DST-independent timestamps | `amigaos3-deps-oct29/native-files-ffs-support/output.txt` |
 | SQLite on real FFS | Commit/reopen, cross-process exclusion, rollback and creation guards passed | `amigaos3-deps-oct29/native-sqlite-ffs-support/output.txt` |
-| Curl/AmiSSL | 21 checks; HTTP, verified HTTPS, certificate rejection and two worker lifecycles | `amigaos3-curl-oct29/native-support-final/guest/output.txt` |
+| Curl/AmiSSL before socket-error isolation | 21 checks; HTTP, verified HTTPS, certificate rejection and two worker lifecycles | `amigaos3-curl-oct29/native-support-final/guest/output.txt` |
+| Curl/AmiSSL with native task-owned socket errors | Same 21 checks passed after rebuilding curl and its owner/worker helper | `amigaos3-curl-oct29/native-socket-error-final/guest/output.txt` |
 
-Every listed guest returned zero. The final probe binaries match the copies
-actually executed. `build/amigaos3-sdk-oct29/profile-validation.json` records
+Every listed guest returned zero; each result belongs to the executable
+hash recorded by its runner. The current curl probe hash matches both its
+build manifest and the copy actually executed.
+`build/amigaos3-sdk-oct29/profile-validation.json` records
 the SDK identity and hashes of the evidence; the package manifests record
 archive and probe hashes. All public headers shared with the old dependency
 prefix are byte-identical. None of the rebuilt archives references the
@@ -89,6 +92,22 @@ manifest and object remain in that directory; earlier component and JSC
 results remain tied to their original executable hashes. The aggregate
 manifest records this follow-up separately rather than claiming those
 earlier executables were rerun with the changed object.
+
+The later socket-error correction rebuilds curl to read native bsdsocket
+`Errno()` and set that channel through `SocketBaseTagList`, while the
+production AmiSSL helper binds separate error storage to its owner and
+worker tasks. The new curl archive is
+`df533d56d6de1f0e845fbe79c920753932df736bd34770bee2f5b33fd27abf80`;
+the executed probe is
+`265c24c634cc7db65994a766c032dfc547d37505147e2cefb4edfb2f8322329d`.
+The baseline archive and manifest remain under
+`build/amigaos3-curl-oct29/socket-error-baseline`. The additive
+`socket_errno_update` record in `profile-validation.json` preserves every
+earlier output/hash and points to immutable before/after manifest copies in
+`build/amigaos3-curl-errno-evidence`. The new 21-check result is a component
+regression; the controlled errno-interleaving proof and actual browser
+WebSocket/cancellation behavior remain distinct evidence. See
+[UPSTREAM.md](UPSTREAM.md) and [CURL.md](CURL.md).
 
 The focused division probe deliberately links the SDK's real `mktime` and
 `ldiv` with the explicit integer helper object:

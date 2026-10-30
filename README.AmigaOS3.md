@@ -81,8 +81,8 @@ The initial OS3 configuration change recognizes `CPU(M68K)` and
 It retains conservative aligned-access handling. `OS(AMIGAOS)` still means
 the existing OS4 paths; pretending OS3 is OS4 would select incompatible
 interfaces. The existing interpreter defaults select C-loop/JSVALUE32_64.
-The first native backend is described below. The complete browser still
-requires further platform adaptation and target dependencies.
+The native backend, matched dependencies and browser validation are
+described below.
 
 ## Validation
 
@@ -103,9 +103,10 @@ Cherry-picks applied without conflicts. The MIME collection API and its
 callers were inspected against this tree. `git diff --check` passes for
 the branch changes. The native platform integration test below now adds
 emulator coverage. Native JavaScript execution and collector stress now
-pass as described below. There is still no full browser build, page
-rendering, physical-hardware test or browser memory
-benchmark. The target-header check alone does not validate these layers.
+pass as described below. The complete browser now links and renders pages
+in an AmigaOS 3.2 guest. Physical-hardware testing and browser memory
+benchmarks remain outstanding. The target-header check alone does not
+validate these layers.
 
 ## First native platform milestone
 
@@ -136,14 +137,15 @@ Implemented and compiled from real WTF sources:
   adjustments. Timer/library handles are local to each call for this
   initial implementation; persistent handles are a later optimization.
 
-First build the pthread-enabled runtime with
-`python3 Tools/AmigaOS3/build-cxx-runtime.py`. Then build the standalone
-native integration tests (these do **not** build a browser executable):
+First build the matched October 29 runtime and dependencies using
+[the SDK profile instructions](Tools/AmigaOS3/SDK-PROFILES.md). Then build
+the standalone native integration tests:
 
 ```sh
 cmake -S Tools/AmigaOS3 -B build/amigaos3-platform \
   -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
-  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime" \
+  -DAMIGAOS3_TOOLCHAIN_ROOT=/opt/amiga-16.2-20261029 \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime-oct29" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build build/amigaos3-platform -j4
 ```
@@ -228,25 +230,20 @@ Native keyboard, dead-key, wheel and charset conversion tests also pass;
 see [input support](Tools/AmigaOS3/KEYBOARD.md). Clipboard changes are
 deferred from the device callback to a MUI handler on the browser task.
 
-Build and stage dependencies with the selected runtime:
+Build and stage the complete matched dependency profile with the commands
+in [SDK-PROFILES.md](Tools/AmigaOS3/SDK-PROFILES.md). Do not mix the original
+October 14 archives with October 29 headers or libraries.
+
+Build the browser and its matching JavaScriptCore shell together:
 
 ```sh
-python3 Tools/AmigaOS3/build-cxx-runtime.py
-python3 Tools/AmigaOS3/build-icu.py \
-  --cxx-runtime build/amigaos3-sdk/cxx-runtime
-python3 Tools/AmigaOS3/build-dependencies.py --smoke
-python3 Tools/AmigaOS3/build-curl.py --smoke
-```
-
-The engine-only build isolates JavaScriptCore from the MUI browser frontend:
-
-```sh
-cmake -S . -B build/amigaos3-jsc \
+cmake -S . -B build/amigaos3-browser-oct29 -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
-  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime" \
-  -DAMIGAOS3_DEPENDENCY_ROOT="$PWD/build/amigaos3-sdk" \
-  -DCMAKE_BUILD_TYPE=Release -DPORT=MUI -DAMIGAOS3_JSC_ONLY=ON
-cmake --build build/amigaos3-jsc -j4
+  -DAMIGAOS3_TOOLCHAIN_ROOT=/opt/amiga-16.2-20261029 \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime-oct29" \
+  -DAMIGAOS3_DEPENDENCY_ROOT="$PWD/build/amigaos3-sdk-oct29" \
+  -DCMAKE_BUILD_TYPE=Release -DPORT=MUI
+cmake --build build/amigaos3-browser-oct29 --target OWB jsc -j4
 ```
 
 The complete WTF and JavaScriptCore archives compile and the native `jsc`
@@ -255,8 +252,8 @@ on the OS3.2 guest, including signed/unsigned boundaries, Float32 rounding,
 IEEE overflow/NaN propagation, BigInt, typed-array byte order, Unicode
 regular expressions, ICU formatting
 and retained closures across 32 explicit garbage collections. Evidence is
-in `build/amigaos3-jsc-ieee-final/output.txt` and its adjacent input
-hash manifest. This is an engine integration test, not exhaustive GC proof.
+in `build/amigaos3-jsc-oct29-environment/output.txt` and its adjacent
+build-identity manifest. This is an engine integration test, not exhaustive GC proof.
 
 JavaScriptCore's precise allocations now accommodate the SDK's four-byte
 malloc alignment while preserving the engine's 16-byte header alignment
@@ -274,16 +271,17 @@ Run the engine test with an installed AmiSSL 5.27 runtime in the fixture:
 python3 Tools/AmigaOS3/run-platform-test.py \
   --system /path/to/installed-amigaos3-system \
   --rom /path/to/matching-kickstart.rom --emulator /path/to/winuae \
-  --binary build/amigaos3-jsc/bin/jsc --script Tools/AmigaOS3/jsc-test.js \
+  --binary build/amigaos3-browser-oct29/bin/jsc --script Tools/AmigaOS3/jsc-test.js \
   --stack 1048576 --z3-memory 256 \
   --success-marker 'Odyssey JSC test: 0 failures' \
   --output build/amigaos3-jsc-run
 ```
 
-A working browser is not yet available. Use a fresh CMake
-build directory when changing the toolchain/runtime flags. The OS3 build
+Use a fresh CMake build directory when changing the toolchain/runtime
+flags. The OS3 build
 resolves actual target dependencies and does not accept host libraries or
-fabricated AROS SDK paths. For the full browser, omit `AMIGAOS3_JSC_ONLY`.
+fabricated AROS SDK paths. To isolate JavaScriptCore, use a separate build
+directory with `AMIGAOS3_JSC_ONLY=ON`.
 
 The complete WebCore static archive builds against the native dependency
 archives, including the networking, font, image, layout and DOM sources.
@@ -293,8 +291,25 @@ The complete frontend now compiles and `OWB` links against the matched
 October 29 SDK, runtime and dependencies. Native RTG blending and separator
 drawing pass focused pixel checks. The native browser now opens and renders
 the HTTP fixture, passing DOM/Unicode, CSS layout, canvas, JavaScript and
-localStorage assertions. Further network, navigation and shutdown tests are
-in progress. See [matched SDK profiles](Tools/AmigaOS3/SDK-PROFILES.md) and
+localStorage assertions. The socket-error repair also passes Unicode
+WebSocket echo, HTTP while TLS remains pending, cancellation and subsequent
+HTTP, trusted HTTPS JSON/script loading, wrong-host and untrusted-certificate
+rejection, and storage across navigation and reload. These browser reports
+are in `build/amigaos3-browser-release-final/result.json`; tracing is off.
+Automatic TopSites screenshots are disabled in this tested configuration
+because their synchronous rendering delays callbacks. The option and
+installation requirements are documented in
+[INSTALL.txt](Tools/AmigaOS3/INSTALL.txt).
+That final executable also returned zero after native Right-Amiga Q and
+confirmation through the real Quit requester. The preceding build passed
+native page focus, typing `odyssey68k`, and a mouse click, with trusted DOM
+events and a visually inspected result in
+`build/amigaos3-browser-network-final`. The final rebuild only removes
+unnecessary errno access from disabled tracing; the frontend is unchanged.
+Create the local installation archive using
+[INSTALL-BUNDLE.md](Tools/AmigaOS3/INSTALL-BUNDLE.md). See
+[the browser fixture](Tools/AmigaOS3/BROWSER-FIXTURE.md),
+[matched SDK profiles](Tools/AmigaOS3/SDK-PROFILES.md) and
 [upstream runtime findings](Tools/AmigaOS3/UPSTREAM.md). Measure resource use
 after startup and browsing work before choosing memory limits. The initial OS3
 build disables video and MediaSource because no native FFmpeg stack is

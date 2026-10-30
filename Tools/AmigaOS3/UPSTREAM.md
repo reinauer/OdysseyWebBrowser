@@ -56,6 +56,60 @@ Two additional Oct29 findings are independent of the older runtime evidence:
   `build/amigaos3-integer-alias/native/output.txt`. Its link map confirms
   neither conflicting compiler-helper archive member was extracted.
 
+## Shared libc errno across native pthreads
+
+The Oct29 SDK's selected newlib configuration accesses `errno` through
+`_impure_ptr->_errno`. A native owner/pthread probe observes the same
+address in both tasks (`errno-isolation-native-3/output.txt` under
+`build/amigaos3-connect-only`). Building GCC's pthread-enabled overlay does
+not by itself make newlib's reentrancy structure task-local. This is a
+newlib threaded-runtime/profile integration candidate, not a generic GCC
+or m68k ABI defect.
+
+A second native probe demonstrates the consequence for the old application
+binding of bsdsocket/AmiSSL errors to that shared address. It completes a
+real connect-only curl connection, then performs a nonblocking receive with
+no data available. A diagnostic hook immediately after `sread` and before
+curl reads `SOCKERRNO` pauses the worker while the owner writes its own
+`errno = ENOENT`. The observed sequence is:
+
+```text
+ownererrno=0x4001ee30
+connect completion=1 result=0 workererrno=0x4001ee30
+recv before=35 after=2 curl=56 osError=2 bytes=0
+Forced errno interleave: 0 failures reproducing recv misclassification
+RETURN=0
+```
+
+The actual socket error is `EWOULDBLOCK` (35), but curl reads `ENOENT` (2)
+and returns `CURLE_RECV_ERROR` (56) instead of `CURLE_AGAIN`. This is a
+deliberately controlled legal interleaving, not a measurement of failure
+frequency with an uninstrumented browser. Zero exit means the expected
+misclassification was reproduced. The probe uses the matched pthread
+runtime and unchanged SDK libc; it is not an entirely stock SDK program.
+
+`build/amigaos3-connect-only/errno-proof-identity.json` pins the output,
+source, exact compiler/link commands, executable, helper source and original
+curl archive. `cf-socket-interleave.diff` contains only the hook declaration
+and call. A private instrumented `cf-socket.o` precedes the archive at link
+time; the staged curl/SDK archives were not modified by the diagnostic.
+The preserved curl baseline is
+`build/amigaos3-curl-oct29/socket-error-baseline`.
+
+A native application must bind bsdsocket and AmiSSL to error storage owned
+by the calling task and ensure curl reads that same error channel. That
+application binding is separate from making all newlib state reentrant in
+a threaded SDK profile. The focused workaround does not establish that
+every libc use of `_impure_ptr` is safe across threads. A replacement archive
+requires new native validation recorded separately from the baseline in the
+matched SDK profile evidence.
+
+The tracked reproducer is [SocketErrnoTest.c](SocketErrnoTest.c), built by
+[build-socket-errno-test.py](build-socket-errno-test.py). The baseline and
+fixed probe modes, listener requirements and native runner arguments are
+documented in [SOCKET_ERRNO.md](SOCKET_ERRNO.md); their scheduling hook
+remains private to the probe and does not modify installed archives.
+
 ## Current unmodified SDK arithmetic baseline
 
 The 2026-10-30 native run in
