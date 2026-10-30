@@ -39,6 +39,23 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def stage_licenses(source, name, destination):
+    destination.mkdir(parents=True, exist_ok=True)
+    patterns = ['COPYING*', 'LICENSE*', 'AUTHORS*', 'COPYRIGHT*', 'Copyright*']
+    if name == 'freetype':
+        patterns += ['docs/FTL.TXT', 'docs/GPLv2.TXT']
+    for pattern in patterns:
+        for license_file in source.glob(pattern):
+            if license_file.is_file():
+                shutil.copy2(license_file, destination/license_file.name)
+    if name == 'sqlite':
+        header = (source/'sqlite3.h').read_text()
+        notice = header.split('*************************************************************************', 1)[0]
+        if 'The author disclaims copyright' not in notice:
+            raise RuntimeError('SQLite public-domain notice was not found')
+        (destination/'PUBLIC-DOMAIN.txt').write_text('From the pinned sqlite3.h header:\n\n' + notice + '*/\n')
+
+
 def patch(path, before, after):
     content = path.read_text()
     if after in content:
@@ -296,12 +313,7 @@ def main():
             if not subprocess.check_output([env['AR'],'t',str(icu_library)],text=True).strip():
                 raise RuntimeError(f'Empty target archive: {icu_library}')
             manifest['packages'][name]['icu_archive_sha256'] = sha(icu_library)
-        license_dir = prefix/'share/licenses'/name
-        license_dir.mkdir(parents=True, exist_ok=True)
-        for pattern in ['COPYING*', 'LICENSE*', 'AUTHORS*']:
-            for license_file in src.glob(pattern):
-                if license_file.is_file():
-                    shutil.copy2(license_file, license_dir/license_file.name)
+        stage_licenses(src, name, prefix/'share/licenses'/name)
         pc_names = {'pixman':'pixman-1','expat':'expat','fontconfig':'fontconfig','cairo':'cairo','harfbuzz':'harfbuzz','libxml2':'libxml-2.0','libxslt':'libxslt'}
         if name in pc_names:
             pc = prefix/'lib/pkgconfig'/f'{pc_names[name]}.pc'

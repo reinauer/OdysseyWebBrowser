@@ -1,0 +1,62 @@
+Odyssey 3.2.2 - AmigaOS 3 native port
+
+Installation
+
+Copy the complete Odyssey directory to a writable native Amiga filesystem
+with long filename support. The native test installation uses AmigaOS 3.2
+FFS DOS7. Keep Resource, Conf, Fonts and the executable together: the port
+uses PROGDIR: paths. No global fontconfig assign or ICU data file is needed.
+The supplied Noto Sans font is distributed under the notice in Fonts.
+
+Start from a Shell:
+
+  CD Work:Applications/Odyssey
+  Stack 2097152
+  OWB "https://example.com/"
+
+Replace the example installation path with your own. Do not overwrite
+existing preferences or databases when upgrading an existing installation;
+stage this bundle in a new directory first. The older OWB.readme retained
+from Dist describes the original distribution; this file describes OS3.
+
+Runtime requirements
+
+- Motorola 68020 or later. This build uses software floating point.
+- AmigaOS 3 with the libraries provided by the tested AmigaOS 3.2 system.
+  Earlier OS versions have not been established by the browser tests.
+- An RTG screen with at least 24-bit depth and cybergraphics.library
+  compatibility. Native tests use Picasso96, 800x600x24, 16 MiB RTG RAM
+  and 512 MiB Zorro III RAM. These are tested settings, not a measured
+  minimum memory requirement or physical-hardware performance claim.
+- A compatible MUI installation with Title, Listtree.mcc and Calltips.mcc.
+  Tests use Zune68's matching MUI5 muimaster.library 21.227 and
+  zunemaster.library, plus the native MUI5 Calltips.mcc. Ordinary Zune
+  muimaster.library 19.81 did not load that Calltips class.
+- Installed picture and PNG datatypes, and normal startup datatype
+  registration (C:AddDataTypes REFRESH QUIET). Toolbar pictures require
+  these; the fixture checks the actual back.png through MUI Dtpic.
+- A running TCP/IP stack providing bsdsocket.library. Native guest tests
+  use WinUAE's socket emulation; other TCP/IP stacks need separate testing.
+- AmiSSL 5.27 with its installed libraries, AmiSSL: assignment and trusted
+  certificate store. Keep the system date correct. An empty browser CA
+  file setting selects AmiSSL's trust store; an explicit path selects
+  that CA file. Certificate verification remains enabled.
+- Standard clipboard.device and keymap/locale support from the OS.
+
+OS, MUI, Picasso96 and AmiSSL runtime files are not included. Install
+them using their own distributions. Optional OpenURL integration uses
+openurl.library when present. Audio/video playback is not enabled in
+this build. Screen-blanker inhibition is currently unavailable.
+
+Files and build identity
+
+SHA256SUMS covers the staged files (excluding itself). Build/inputs.json
+records the executable hash, source revision, input hashes and exact
+runtime identity. Licenses contains the dependency/runtime notices.
+The executable already includes the port's static libraries and repaired
+compiler runtime; do not install SDK archives on the Amiga.
+
+Source and reproducible build instructions are in the AmigaOS3 branch of
+this source checkout under Tools/AmigaOS3. Native test results apply only
+to their recorded executable hashes. A local staging operation alone is
+not a new runtime test. This bundle is prepared locally, not published.
