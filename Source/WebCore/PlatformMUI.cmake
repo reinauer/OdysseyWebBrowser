@@ -87,6 +87,8 @@ list(APPEND WebCore_SOURCES
 )
 
 if (AmigaOS3)
+    list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+        platform/network/curl/AmigaOS3AmiSSL.h)
     list(APPEND WebCore_SOURCES
         platform/mui/PlatformKeyboardEventAmigaOS3.cpp
         platform/network/curl/AmigaOS3AmiSSL.c

@@ -114,16 +114,27 @@ void SocketStreamHandleImpl::didReceiveData(CurlStreamID, const uint8_t* data, s
 
 void SocketStreamHandleImpl::didFail(CurlStreamID, CURLcode errorCode)
 {
+#if OS(AMIGAOS3)
+    Ref<SocketStreamHandleImpl> protectedThis(*this);
+#endif
     destructStream();
 
     if (m_state == Closed)
         return;
+#if !OS(AMIGAOS3)
     m_state = Closed;
+#endif
 
     if (errorCode == CURLE_RECV_ERROR)
         m_client.didFailToReceiveSocketStreamData(*this);
     else
         m_client.didFailSocketStream(*this, SocketStreamError(errorCode, m_url.string(), CurlHandle::errorDescription(errorCode)));
+#if OS(AMIGAOS3)
+    // Failure callbacks can synchronously disconnect and release their
+    // handle. Let platformClose deliver the single close notification;
+    // marking Closed above would suppress it and strand the WebSocket.
+    platformClose();
+#endif
 }
 
 void SocketStreamHandleImpl::destructStream()

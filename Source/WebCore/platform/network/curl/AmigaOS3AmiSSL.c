@@ -5,6 +5,7 @@
 #include "AmigaOS3AmiSSL.h"
 #include <unistd.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <libraries/amisslmaster.h>
 #include <proto/exec.h>
 #include <proto/bsdsocket.h>
@@ -18,11 +19,32 @@ struct Library* SocketBase;
 static struct Library* ownerSocketBase;
 static struct Task* ownerTask;
 static struct Task* workerTask;
+static int ownerSocketError;
+static int workerSocketError;
 
-static int bindSocketError(struct Library* SocketBase)
+int* odysseyAmigaOS3SocketError(void)
+{
+    struct Task* current = FindTask(NULL);
+    if (current == workerTask)
+        return &workerSocketError;
+    if (current == ownerTask)
+        return &ownerSocketError;
+    /* Native socket handles and their error channels belong to these two
+       initialized tasks. A third caller must not borrow either context. */
+    abort();
+}
+
+int odysseyAmigaOS3SocketReceiveBuffer(int socket, int size)
+{
+    if (!workerTask || workerTask != FindTask(NULL))
+        return -1;
+    return setsockopt(socket, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+}
+
+static int bindSocketError(struct Library* SocketBase, int* socketError)
 {
     struct TagItem tags[] = {
-        { SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(errno))), (ULONG)&errno },
+        { SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(*socketError))), (ULONG)socketError },
         { TAG_DONE, 0 }
     };
     return !SocketBaseTagList(tags);
@@ -34,14 +56,15 @@ int odysseyAmigaOS3AmiSSLInitialize(void)
         return ownerTask == FindTask(NULL);
     ownerSocketBase = OpenLibrary("bsdsocket.library", 4);
     AmiSSLMasterBase = OpenLibrary("amisslmaster.library", AMISSLMASTER_MIN_VERSION);
-    if (!ownerSocketBase || !AmiSSLMasterBase || !bindSocketError(ownerSocketBase))
+    ownerSocketError = 0;
+    if (!ownerSocketBase || !AmiSSLMasterBase || !bindSocketError(ownerSocketBase, &ownerSocketError))
         goto fail;
     struct TagItem tags[] = {
         { AmiSSL_UsesOpenSSLStructs, TRUE },
         { AmiSSL_GetAmiSSLBase, (ULONG)&AmiSSLBase },
         { AmiSSL_GetAmiSSLExtBase, (ULONG)&AmiSSLExtBase },
         { AmiSSL_SocketBase, (ULONG)ownerSocketBase },
-        { AmiSSL_ErrNoPtr, (ULONG)&errno },
+        { AmiSSL_ErrNoPtr, (ULONG)&ownerSocketError },
         { TAG_DONE, 0 }
     };
     if (OpenAmiSSLTagList(AMISSL_CURRENT_VERSION, tags))
@@ -65,12 +88,13 @@ int odysseyAmigaOS3AmiSSLWorkerInitialize(void)
     struct Library* socket = OpenLibrary("bsdsocket.library", 4);
     if (!socket)
         return 0;
+    workerSocketError = 0;
     struct TagItem tags[] = {
         { AmiSSL_SocketBase, (ULONG)socket },
-        { AmiSSL_ErrNoPtr, (ULONG)&errno },
+        { AmiSSL_ErrNoPtr, (ULONG)&workerSocketError },
         { TAG_DONE, 0 }
     };
-    if (!bindSocketError(socket) || InitAmiSSLA(tags)) {
+    if (!bindSocketError(socket, &workerSocketError) || InitAmiSSLA(tags)) {
         CloseLibrary(socket);
         return 0;
     }

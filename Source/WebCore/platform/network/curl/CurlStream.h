@@ -62,6 +62,10 @@ public:
 
     void appendMonitoringFd(fd_set&, fd_set&, fd_set&, int&);
     void tryToTransfer(const fd_set&, const fd_set&, const fd_set&);
+#if OS(AMIGAOS3)
+    void tryToTransfer();
+    void didCompleteConnection(CURLcode);
+#endif
 
 private:
     void destroyHandle();
@@ -77,6 +81,11 @@ private:
     CurlStreamID m_streamID;
 
     std::unique_ptr<CurlHandle> m_curlHandle;
+#if OS(AMIGAOS3)
+    UniqueArray<uint8_t> m_receiveBuffer;
+    bool m_connected { false };
+    bool m_addedToMulti { false };
+#endif
 
     WTF::Vector<std::pair<UniqueArray<uint8_t>, size_t>> m_sendBuffers;
     size_t m_sendBufferOffset { 0 };

@@ -66,7 +66,11 @@ static int curlLimitSockOptCallback(void* /*clientp*/, curl_socket_t curlfd, cur
     if (purpose == CURLSOCKTYPE_IPCXN) {
         // Cap receive buffer at 512 KB to avoid the 2MB DMA cache-flush kernel bug.
         int rcvbuf = 512 * 1024;
+#if OS(AMIGAOS3)
+        odysseyAmigaOS3SocketReceiveBuffer(curlfd, rcvbuf);
+#else
         setsockopt((int)curlfd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+#endif
     }
     return CURL_SOCKOPT_OK;
 }
@@ -803,8 +807,14 @@ void CurlHandle::setHttpAuthUserPass(const String& user, const String& password,
 
 void CurlHandle::setCACertPath(const char* path)
 {
+#if OS(AMIGAOS3)
+    // No file override: use the installed AmiSSL trust store through curl's
+    // native CA fallback. An empty filename would disable that fallback.
+    curl_easy_setopt(m_handle, CURLOPT_CAINFO, path && *path ? path : nullptr);
+#else
     if (path)
         curl_easy_setopt(m_handle, CURLOPT_CAINFO, path);
+#endif
 }
 
 void CurlHandle::setSslVerifyPeer(VerifyPeer verifyPeer)

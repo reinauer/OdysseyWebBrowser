@@ -41,6 +41,10 @@ public:
     virtual void send(CurlStreamID, UniqueArray<uint8_t>&&, size_t) = 0;
 
     virtual void callClientOnMainThread(CurlStreamID, WTF::Function<void(CurlStream::Client&)>&&) = 0;
+#if OS(AMIGAOS3)
+    virtual bool addStreamHandle(CURL*, CurlStream&) = 0;
+    virtual void removeStreamHandle(CURL*) = 0;
+#endif
     virtual long maxConnects() const { return 16; }
 };
 

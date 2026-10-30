@@ -29,9 +29,38 @@
 #include "CurlStreamScheduler.h"
 #include "SocketStreamError.h"
 
+#if OS(AMIGAOS3)
+#include "AmigaOS3AmiSSL.h"
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#endif
+
 #if USE(CURL)
 
 namespace WebCore {
+
+#if OS(AMIGAOS3)
+static void traceStream(CurlStreamID streamID, const char* operation, CURLcode result, size_t bytes = 0)
+{
+    static FILE* output = []() -> FILE* {
+        const char* path = getenv("OWB_CURL_STREAM_TRACE");
+        return path && *path ? fopen(path, "a") : nullptr;
+    }();
+    if (!output)
+        return;
+    int savedErrno = errno;
+    int savedSocketError = *odysseyAmigaOS3SocketError();
+    struct timeval now;
+    gettimeofday(&now, nullptr);
+    fprintf(output, "CurlStream %llu %s code=%d bytes=%lu errno=%d socket_errno=%d time=%ld.%06ld\n",
+        static_cast<unsigned long long>(streamID), operation, static_cast<int>(result),
+        static_cast<unsigned long>(bytes), savedErrno, savedSocketError, static_cast<long>(now.tv_sec), static_cast<long>(now.tv_usec));
+    fflush(output);
+    errno = savedErrno;
+}
+#endif
 
 CurlStream::CurlStream(CurlStreamScheduler& scheduler, CurlStreamID streamID, URL&& url)
     : m_scheduler(scheduler)
@@ -46,6 +75,13 @@ CurlStream::CurlStream(CurlStreamScheduler& scheduler, CurlStreamID streamID, UR
 
     m_curlHandle->enableConnectionOnly();
 
+#if OS(AMIGAOS3)
+    // The shared request worker must keep servicing HTTP while TCP, proxy
+    // negotiation or TLS connection setup is pending.
+    m_addedToMulti = m_scheduler.addStreamHandle(m_curlHandle->handle(), *this);
+    if (!m_addedToMulti)
+        notifyFailure(CURLE_FAILED_INIT);
+#else
     auto errorCode = m_curlHandle->perform();
     if (errorCode != CURLE_OK) {
         notifyFailure(errorCode);
@@ -55,7 +91,28 @@ CurlStream::CurlStream(CurlStreamScheduler& scheduler, CurlStreamID streamID, UR
     m_scheduler.callClientOnMainThread(m_streamID, [streamID = m_streamID](Client& client) {
         client.didOpen(streamID);
     });
+#endif
 }
+
+#if OS(AMIGAOS3)
+void CurlStream::didCompleteConnection(CURLcode result)
+{
+    traceStream(m_streamID, "connect", result);
+    ASSERT(!isMainThread());
+    ASSERT(m_addedToMulti && !m_connected);
+    if (result != CURLE_OK) {
+        notifyFailure(result);
+        return;
+    }
+
+    // Connect-only easy handles must remain in the multi handle while
+    // curl_easy_send/recv use the connection, even after CURLMSG_DONE.
+    m_connected = true;
+    m_scheduler.callClientOnMainThread(m_streamID, [streamID = m_streamID](Client& client) {
+        client.didOpen(streamID);
+    });
+}
+#endif
 
 CurlStream::~CurlStream()
 {
@@ -68,6 +125,13 @@ void CurlStream::destroyHandle()
     if (!m_curlHandle)
         return;
 
+#if OS(AMIGAOS3)
+    if (m_addedToMulti) {
+        m_scheduler.removeStreamHandle(m_curlHandle->handle());
+        m_addedToMulti = false;
+    }
+    m_connected = false;
+#endif
     m_curlHandle = nullptr;
 }
 
@@ -129,10 +193,22 @@ void CurlStream::tryToReceive()
     if (!m_curlHandle)
         return;
 
+#if OS(AMIGAOS3)
+    // Keep the buffer across CURLE_AGAIN instead of allocating on every
+    // scheduler tick while an otherwise idle WebSocket remains connected.
+    if (!m_receiveBuffer)
+        m_receiveBuffer = makeUniqueArray<uint8_t>(kReceiveBufferSize);
+    auto& receiveBuffer = m_receiveBuffer;
+#else
     auto receiveBuffer = makeUniqueArray<uint8_t>(kReceiveBufferSize);
+#endif
     size_t bytesReceived = 0;
 
     auto errorCode = m_curlHandle->receive(receiveBuffer.get(), kReceiveBufferSize, bytesReceived);
+#if OS(AMIGAOS3)
+    if (errorCode != CURLE_AGAIN)
+        traceStream(m_streamID, "receive", errorCode, bytesReceived);
+#endif
     if (errorCode != CURLE_OK) {
         if (errorCode != CURLE_AGAIN)
             notifyFailure(errorCode);
@@ -148,6 +224,20 @@ void CurlStream::tryToReceive()
     });
 }
 
+#if OS(AMIGAOS3)
+void CurlStream::tryToTransfer()
+{
+    ASSERT(!isMainThread());
+    if (!m_connected)
+        return;
+    // Connect-only curl handles use nonblocking send/receive. Service one
+    // chunk per scheduler tick, including data already buffered by TLS
+    // that would not be visible to a socket-readiness check.
+    tryToReceive();
+    tryToSend();
+}
+#endif
+
 void CurlStream::tryToSend()
 {
     if (!m_curlHandle || !m_sendBuffers.size())
@@ -157,6 +247,10 @@ void CurlStream::tryToSend()
     size_t bytesSent = 0;
 
     auto errorCode = m_curlHandle->send(std::get<0>(elem).get() + m_sendBufferOffset, std::get<1>(elem) - m_sendBufferOffset, bytesSent);
+#if OS(AMIGAOS3)
+    if (errorCode != CURLE_AGAIN)
+        traceStream(m_streamID, "send", errorCode, bytesSent);
+#endif
     if (errorCode != CURLE_OK) {
         if (errorCode != CURLE_AGAIN)
             notifyFailure(errorCode);
@@ -177,6 +271,9 @@ void CurlStream::tryToSend()
 
 void CurlStream::notifyFailure(CURLcode errorCode)
 {
+#if OS(AMIGAOS3)
+    traceStream(m_streamID, "failure", errorCode);
+#endif
     destroyHandle();
 
     m_scheduler.callClientOnMainThread(m_streamID, [streamID = m_streamID, errorCode](Client& client) mutable {

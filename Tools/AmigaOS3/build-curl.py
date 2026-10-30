@@ -38,6 +38,11 @@ def main():
     if args.probes_only and not args.smoke:
         parser.error('--probes-only requires --smoke')
     prefix, build, toolchain = (p.resolve() for p in (args.prefix, args.build_root, args.toolchain))
+    if args.probes_only:
+        manifest_path = build/'manifest.json'
+        previous_manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+        if previous_manifest.get('socket_error_channel') != 'native-bsdsocket-task-owned-v1':
+            parser.error('this curl build predates task-owned socket errors; rebuild it before linking the new native context helper')
     runtime = (args.cxx_runtime or prefix/'cxx-runtime').resolve()
     math_helpers = ['floatunsidf.o', 'floatunsisf.o', 'truncdfsf2.o', 'double-math.o']
     if (runtime/'lib/integer-math.o').exists():
@@ -65,6 +70,33 @@ def main():
     content = content.replace('Curl_ssl->close(cf, data);', '(Curl_ssl->close)(cf, data);')
     content = content.replace('connssl->ssl_impl->close(cf, data);', '(connssl->ssl_impl->close)(cf, data);')
     vtls.write_text(content)
+    # This SDK's libc errno is process-global. A GUI syscall can overwrite
+    # EWOULDBLOCK between bsdsocket recv() and curl's error classification.
+    # The native owner/worker helper binds independent socket error storage
+    # to each task and to AmiSSL; use that same channel for reads and writes.
+    setup = source/'lib/curl_setup.h'
+    content = setup.read_text()
+    original = '#else\n#define SOCKERRNO         errno\n#define SET_SOCKERRNO(x)  (errno = (x))'
+    previous = ('#elif defined(ODYSSEY_AMIGAOS3)\n'
+        'extern int* odysseyAmigaOS3SocketError(void);\n'
+        '#define SOCKERRNO        (*odysseyAmigaOS3SocketError())\n'
+        '#define SET_SOCKERRNO(x) (*odysseyAmigaOS3SocketError() = (x))\n'+original)
+    content = content.replace(previous, original)
+    repaired = ('#elif defined(__AMIGA__) && defined(HAVE_PROTO_BSDSOCKET_H) && \\\n'
+        '  !defined(__amigaos4__) && !defined(__MORPHOS__) && !defined(__AROS__)\n'
+        'static inline void Curl_amiga_set_socket_errno(int error)\n'
+        '{\n'
+        '  struct TagItem tags[] = {\n'
+        '    { SBTM_SETVAL(SBTC_ERRNO), (ULONG)error }, { TAG_DONE, 0 }\n'
+        '  };\n'
+        '  (void)SocketBaseTagList(tags);\n'
+        '}\n'
+        '#define SOCKERRNO        ((int)Errno())\n'
+        '#define SET_SOCKERRNO(x) Curl_amiga_set_socket_errno((int)(x))\n'+original)
+    if repaired not in content:
+        if content.count(original) != 1:
+            raise RuntimeError('curl socket errno patch does not match pinned source')
+        setup.write_text(content.replace(original, repaired))
     target = build/'target'
     compiler = str(toolchain/'bin/m68k-amigaos-gcc')
     env = dict(os.environ)
@@ -134,6 +166,9 @@ def main():
         + [runtime/'lib/libgcc.a', runtime/'lib/libstdc++.a', runtime/'lib/libpthread.a',
            toolchain/'m68k-amigaos/lib/libm020/libc.a',
            toolchain/'m68k-amigaos/lib/libamisslstubs.a']}
+    manifest['source_adaptations'] = {str(path.relative_to(source)):digest(path) for path in (vtls, setup)}
+    manifest['socket_error_helper_sha256'] = digest(ROOT/'Source/WebCore/platform/network/curl/AmigaOS3AmiSSL.c')
+    manifest['socket_error_channel'] = 'native-bsdsocket-task-owned-v1'
     if args.smoke:
         manifest['probe_sha256'] = digest(build/'curl-test')
     (build/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')

@@ -65,6 +65,10 @@ public:
     void destroyStream(CurlStreamID) final;
     void send(CurlStreamID, UniqueArray<uint8_t>&&, size_t) final;
     void callClientOnMainThread(CurlStreamID, WTF::Function<void(CurlStream::Client&)>&&) final;
+#if OS(AMIGAOS3)
+    bool addStreamHandle(CURL*, CurlStream&) final;
+    void removeStreamHandle(CURL*) final;
+#endif
     long maxConnects() const { return m_maxConnects; };
     long maxTotalConnections() const { return m_maxTotalConnections; }
     void setMaxTotalConnections(long);
@@ -107,6 +111,11 @@ private:
 
     HashMap<CurlStreamID, CurlStream::Client*> m_clientList;
     HashMap<CurlStreamID, std::unique_ptr<CurlStream>> m_streamList;
+#if OS(AMIGAOS3)
+    // Requests are main-task owned under m_mutex; handles are worker-only.
+    HashSet<CurlStreamID> m_requestedStreams;
+    HashMap<CURL*, CurlStream*> m_streamHandles;
+#endif
 #endif
 };
 
