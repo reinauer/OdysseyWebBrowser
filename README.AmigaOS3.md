@@ -81,7 +81,8 @@ The initial OS3 configuration change recognizes `CPU(M68K)` and
 It retains conservative aligned-access handling. `OS(AMIGAOS)` still means
 the existing OS4 paths; pretending OS3 is OS4 would select incompatible
 interfaces. The existing interpreter defaults select C-loop/JSVALUE32_64.
-This is target detection, not an OS3 backend or complete build configuration.
+The first native backend is described below. The complete browser still
+requires further platform adaptation and target dependencies.
 
 ## Validation
 
@@ -91,8 +92,8 @@ Run the reproducible target-header check from the repository root:
 sh Tools/Scripts/check-amigaos3-platform.sh m68k-amigaos-g++
 ```
 
-Passed with `/opt/amiga-13.4/bin/m68k-amigaos-g++` reporting GCC 13.4.0b
-(AmigaDev 343146d-dirty). The probe compiles the real platform headers to
+Initially passed with GCC 13.4.0b; also passed with the selected
+`/opt/amiga-16.2/bin/m68k-amigaos-g++` (GCC 16.2.0b). The probe compiles the real platform headers to
 m68k object files and checks CPU/OS identity, 32-bit pointers, big-endian
 selection, conservative alignment, MUI, system allocation, JSVALUE32_64,
 C-loop, and disabled JIT/DFG/FTL/Yarr JIT/WebAssembly. It also checks the
@@ -100,31 +101,118 @@ fallback for compilers without `__amigaos3__`.
 
 Cherry-picks applied without conflicts. The MIME collection API and its
 callers were inspected against this tree. `git diff --check` passes for
-the branch changes. No full browser build, MUI runtime test, JavaScript
-execution, emulator run, physical-hardware test or memory benchmark has
-been performed. The target-header check does not validate these layers.
+the branch changes. The native platform integration test below now adds
+emulator coverage. There is still no full browser build, JavaScript
+execution, page rendering, physical-hardware test or browser memory
+benchmark. The target-header check alone does not validate these layers.
 
-## Next porting work
+## First native platform milestone
 
-1. Add an OS3 toolchain/build target and dependency staging. The current
-   `Source/cmake/amigaos.cmake` targets PPC AmigaOS4/clib4; `rebuild.sh`
-   targets AROS. Neither is an OS3 build recipe.
-2. Supply OS3 allocation, task/thread, semaphore, timer and filesystem
-   backends. The MUI build currently selects POSIX threading; the OS4 and
-   AROS allocator selection has no OS3 branch. Audit GC stack/register
-   capture and atomics alongside the thread implementation.
-3. Build and validate the C-loop JavaScriptCore on m68k, including tagged
-   values, alignment, endian-sensitive code and floating-point behavior.
-   Keep the existing no-JIT route and do not reuse PPC assembly.
-4. Port library startup, MUI callbacks/hooks, DOS and graphics calls,
-   clipboard, sockets and character conversion. Classify each existing
-   `OS(AMIGAOS)` / `__amigaos4__` block before sharing it with OS3.
-5. Stage compatible m68k dependencies (including Cairo, FreeType,
-   Fontconfig, ICU, curl/TLS, image codecs, SQLite and XML libraries), then
-   bring up a minimal window and local HTML. Establish multimedia and
-   optional-feature policy for OS3 separately from OS4 GPU support.
-6. Measure heap/stack pressure and rendering/JavaScript behavior on the
-   intended emulated and physical machines before choosing resource limits.
+The OS3 toolchain defaults to `/opt/amiga-16.2`, CPU 68020, and the MUI
+headers already installed in that compiler SDK. Zune68 is used as the
+runtime reference, without adding its AROS source include tree to the
+browser build. Override `AMIGAOS3_TOOLCHAIN_ROOT` or `AMIGAOS3_CPU` through
+CMake when needed.
+
+Implemented and compiled from real WTF sources:
+
+- Aligned allocation with overflow checks and matching free, because the
+  SDK declares `posix_memalign` but does not provide a linkable definition.
+  Preserve the JavaScriptCore `oomCrash` entry point without a weak alias,
+  which this Hunk compiler cannot emit. Non-try allocations fail fatally
+  instead of returning null to callers that require allocated memory.
+- Physical-memory page reservations aligned to 4096 bytes, zeroing on
+  reservation/recommit and release through the matching aligned allocator.
+  OS3 has no virtual-memory reservation/decommit. Memory remains allocated
+  until release; executable/JIT and protected guard-page requests fail
+  explicitly instead of pretending to provide protection.
+- Stack bounds from the current Exec task, including SDK pthread workers.
+- `gettimeofday` and `timersub`, required by the SDK pthread archive;
+  timer.device supplies local time, converted using the Amiga/Unix epoch
+  difference, Locale GMT offset and Odyssey's existing `DST_OFFSET`
+  convention. The OS3 WTF wall clock avoids applying that offset twice.
+- Monotonic time from timer.device EClock, independent of wall-clock
+  adjustments. Timer/library handles are local to each call for this
+  initial implementation; persistent handles are a later optimization.
+
+Build the standalone native integration test (this does **not** build a
+browser executable):
+
+```sh
+cmake -S Tools/AmigaOS3 -B build/amigaos3-platform \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build/amigaos3-platform -j4
+```
+
+`build/amigaos3-platform/odyssey-platform-test` is a native Amiga Hunk
+executable. On the guest, use `Stack 262144` and run it with `--mui` to
+include library opening and MUI text-object construction/disposal.
+
+The checked-in runner copies an installed system into a new output
+directory, installs the probe and optional Zune68 library, writes a minimal
+startup sequence, starts an owned WinUAE process with GDB enabled, records
+input hashes and output, and stops its process after completion. It does
+not alter the source system, ROM or Zune68 checkout. Supply a working OS3
+system directory with libraries matching the ROM. In particular, OS3.2
+needs its matching icon/workbench libraries and a working datatypes.library.
+
+```sh
+python3 Tools/AmigaOS3/run-platform-test.py \
+  --system /path/to/installed-amigaos3-system \
+  --rom /path/to/matching-kickstart.rom \
+  --emulator /path/to/winuae \
+  --binary build/amigaos3-platform/odyssey-platform-test \
+  --mui-library "$HOME/git/zune68/build/muimaster-mui5/muimaster.library" \
+  --output build/amigaos3-run
+```
+
+The output directory must be new. The fixture uses an emulated 68020 with
+2 MiB chip, 8 MiB fast and 64 MiB Zorro III memory; these are test resources,
+not a browser minimum-RAM claim. Licensed ROM/system files stay local and
+are not included in the repository.
+
+The native test passed with `0 failures` and return code 0 on WinUAE with
+an OS3.2 ROM and the local Zune68 library. It covers aligned/zero-size/
+overflow allocations, page alignment and zeroing, partial recommit,
+main/worker stack bounds and stack pointers, pthread create/join, timed
+condition waits, monotonic and wall-clock calls, and MUI object creation.
+This does not exercise browser UI callbacks, rendering or GC suspension.
+
+## Full browser configuration and remaining work
+
+The browser can now be configured with the OS3 toolchain:
+
+```sh
+cmake -S . -B build/amigaos3-browser \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
+  -DCMAKE_BUILD_TYPE=Release -DPORT=MUI \
+  -DAMIGAOS3_DEPENDENCY_ROOT=/path/to/m68k-dependencies
+```
+
+This currently **stops at missing ICU >= 61.2** (headers and the data,
+i18n and uc libraries) in the installed SDK. The OS3 path resolves real
+target dependencies and does not synthesize AROS library paths or accept
+host libraries. An empty framework-property CMake parsing error encountered
+during bring-up was also corrected.
+
+Next work:
+
+1. Build/stage m68k ICU, then the remaining target dependencies (Cairo,
+   Fontconfig, curl/TLS, SQLite, XML/XSLT, HarfBuzz, image codecs and PSL).
+   Check SDK-supplied libraries against the selected CPU and C runtime.
+2. Complete the WTF thread backend. The SDK pthread smoke passes, but the
+   existing `ThreadingPOSIX.cpp` still needs its OS3 signal/suspension,
+   register capture and GC coordination paths. Audit atomics and TLS too.
+   Do not equate basic pthread operation with working WebKit threading.
+3. Port filesystem and CPU-time services and remaining low-level APIs;
+   compile and execute the C-loop JavaScriptCore on m68k.
+4. Port browser library startup, MUI callbacks/hooks, DOS/graphics,
+   clipboard, sockets and character conversion. Classify each OS4-specific
+   API before sharing it with OS3. Establish an OS3 optional-feature policy
+   separately from OS4 multimedia/GPU support.
+5. Bring up local HTML, then network browsing; measure resource usage on
+   emulated and physical systems before choosing resource limits.
 
 The base is an older WebKit lineage despite the recent Odyssey release;
 this branch does not claim current upstream WebKit security coverage.
