@@ -32,6 +32,7 @@
 #include "JSGlobalObject.h"
 #include "JSObject.h"
 #include "MathCommon.h"
+#include <type_traits>
 #include <wtf/CagedUniquePtr.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/StringView.h>
@@ -76,6 +77,14 @@ public:
     JS_EXPORT_PRIVATE static JSBigInt* createFrom(JSGlobalObject*, uint64_t value);
     static JSBigInt* createFrom(JSGlobalObject*, bool value);
     static JSBigInt* createFrom(JSGlobalObject*, double value);
+
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, int> || std::is_same_v<Integer, unsigned>, int> = 0>
+    static JSBigInt* createFrom(JSGlobalObject* globalObject, Integer value)
+    {
+        using FixedInteger = std::conditional_t<std::is_signed_v<Integer>, int32_t, uint32_t>;
+        static_assert(sizeof(FixedInteger) == sizeof(Integer));
+        return createFrom(globalObject, static_cast<FixedInteger>(value));
+    }
 
     static JSBigInt* createFrom(JSGlobalObject*, VM&, int32_t value);
 

@@ -55,31 +55,31 @@ static void handleFraction(Duration& duration, int factor, StringView fractionSt
 
     if (fractionType == TemporalUnit::Hour) {
         fraction *= 60;
-        duration.setMinutes(std::trunc(fraction));
+        duration.setMinutes(::trunc(fraction));
         fraction = std::fmod(fraction, 1);
         if (!fraction)
             return;
     }
 
     fraction *= 60;
-    duration.setSeconds(std::trunc(fraction));
+    duration.setSeconds(::trunc(fraction));
     fraction = std::fmod(fraction, 1);
     if (!fraction)
         return;
 
     fraction *= 1000;
-    duration.setMilliseconds(std::trunc(fraction));
+    duration.setMilliseconds(::trunc(fraction));
     fraction = std::fmod(fraction, 1);
     if (!fraction)
         return;
 
     fraction *= 1000;
-    duration.setMicroseconds(std::trunc(fraction));
+    duration.setMicroseconds(::trunc(fraction));
     fraction = std::fmod(fraction, 1);
     if (!fraction)
         return;
 
-    duration.setNanoseconds(std::trunc(fraction * 1000));
+    duration.setNanoseconds(::trunc(fraction * 1000));
 }
 
 // ParseTemporalDurationString ( isoString )

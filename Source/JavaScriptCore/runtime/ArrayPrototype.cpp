@@ -319,7 +319,7 @@ void shift(JSGlobalObject* globalObject, JSObject* thisObj, uint64_t header, uin
 
     if (isJSArray(thisObj)) {
         JSArray* array = asArray(thisObj);
-        uint32_t header32 = static_cast<uint32_t>(header);
+        unsigned header32 = static_cast<unsigned>(header);
         ASSERT(header32 == header);
         if (array->length() == length && array->shiftCount<shiftCountMode>(globalObject, header32, static_cast<uint32_t>(count)))
             return;

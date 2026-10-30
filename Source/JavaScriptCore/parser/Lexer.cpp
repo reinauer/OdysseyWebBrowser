@@ -905,7 +905,7 @@ template<typename CharacterType> inline void Lexer<CharacterType>::recordUnicode
     ASSERT(codePoint >= 0);
     ASSERT(codePoint <= UCHAR_MAX_VALUE);
     if (U_IS_BMP(codePoint))
-        record16(codePoint);
+        record16(static_cast<UChar>(codePoint));
     else {
         UChar codeUnits[2] = { U16_LEAD(codePoint), U16_TRAIL(codePoint) };
         append16(codeUnits, 2);

@@ -34,10 +34,13 @@
 
 namespace JSC {
 
-static inline bool isAlignedForPreciseAllocation(void* memory)
+static inline uint8_t alignmentAdjustmentForPreciseAllocation(void* memory)
 {
-    uintptr_t allocatedPointer = bitwise_cast<uintptr_t>(memory);
-    return !(allocatedPointer & (PreciseAllocation::alignment - 1));
+    uintptr_t address = bitwise_cast<uintptr_t>(memory);
+#if !OS(AMIGAOS3)
+    ASSERT(!(address & (PreciseAllocation::halfAlignment - 1)));
+#endif
+    return (-address) & (PreciseAllocation::alignment - 1);
 }
 
 PreciseAllocation* PreciseAllocation::tryCreate(Heap& heap, size_t size, Subspace* subspace, unsigned indexInSpace)
@@ -45,20 +48,18 @@ PreciseAllocation* PreciseAllocation::tryCreate(Heap& heap, size_t size, Subspac
     if constexpr (validateDFGDoesGC)
         heap.verifyCanGC();
 
-    size_t adjustedAlignmentAllocationSize = headerSize() + size + halfAlignment;
-    static_assert(halfAlignment == 8, "We assume that memory returned by malloc has alignment >= 8.");
+    if (size > SIZE_MAX - headerSize() - alignmentSlack)
+        return nullptr;
+    size_t adjustedAlignmentAllocationSize = headerSize() + size + alignmentSlack;
     
     // We must use tryAllocateMemory instead of tryAllocateAlignedMemory since we want to use "realloc" feature.
     void* space = subspace->alignedMemoryAllocator()->tryAllocateMemory(adjustedAlignmentAllocationSize);
     if (!space)
         return nullptr;
 
-    bool adjustedAlignment = false;
-    if (!isAlignedForPreciseAllocation(space)) {
-        space = bitwise_cast<void*>(bitwise_cast<uintptr_t>(space) + halfAlignment);
-        adjustedAlignment = true;
-        ASSERT(isAlignedForPreciseAllocation(space));
-    }
+    uint8_t adjustedAlignment = alignmentAdjustmentForPreciseAllocation(space);
+    ASSERT(adjustedAlignment <= alignmentSlack);
+    space = bitwise_cast<char*>(space) + adjustedAlignment;
     
     if (scribbleFreeCells())
         scribble(space, size);
@@ -68,54 +69,36 @@ PreciseAllocation* PreciseAllocation::tryCreate(Heap& heap, size_t size, Subspac
 PreciseAllocation* PreciseAllocation::tryReallocate(size_t size, Subspace* subspace)
 {
     ASSERT(!isLowerTier());
-    size_t adjustedAlignmentAllocationSize = headerSize() + size + halfAlignment;
-    static_assert(halfAlignment == 8, "We assume that memory returned by malloc has alignment >= 8.");
+    if (size > SIZE_MAX - headerSize() - alignmentSlack)
+        return nullptr;
+    size_t adjustedAlignmentAllocationSize = headerSize() + size + alignmentSlack;
 
     ASSERT(subspace == m_subspace);
 
     unsigned oldCellSize = m_cellSize;
-    bool oldAdjustedAlignment = m_adjustedAlignment;
+    uint8_t oldAdjustedAlignment = alignmentAdjustment();
     void* oldBasePointer = basePointer();
 
     void* newBasePointer = subspace->alignedMemoryAllocator()->tryReallocateMemory(oldBasePointer, adjustedAlignmentAllocationSize);
     if (!newBasePointer)
         return nullptr;
 
-    PreciseAllocation* newAllocation = bitwise_cast<PreciseAllocation*>(newBasePointer);
-    bool newAdjustedAlignment = false;
-    if (!isAlignedForPreciseAllocation(newBasePointer)) {
-        newAdjustedAlignment = true;
-        newAllocation = bitwise_cast<PreciseAllocation*>(bitwise_cast<uintptr_t>(newBasePointer) + halfAlignment);
-        ASSERT(isAlignedForPreciseAllocation(static_cast<void*>(newAllocation)));
-    }
+    uint8_t newAdjustedAlignment = alignmentAdjustmentForPreciseAllocation(newBasePointer);
+    ASSERT(newAdjustedAlignment <= alignmentSlack);
+    PreciseAllocation* newAllocation = bitwise_cast<PreciseAllocation*>(bitwise_cast<char*>(newBasePointer) + newAdjustedAlignment);
 
-    // We have 4 patterns.
-    // oldAdjustedAlignment = true  newAdjustedAlignment = true  => Do nothing.
-    // oldAdjustedAlignment = true  newAdjustedAlignment = false => Shift forward by halfAlignment
-    // oldAdjustedAlignment = false newAdjustedAlignment = true  => Shift backward by halfAlignment
-    // oldAdjustedAlignment = false newAdjustedAlignment = false => Do nothing.
-
-    if (oldAdjustedAlignment != newAdjustedAlignment) {
-        if (oldAdjustedAlignment) {
-            ASSERT(!newAdjustedAlignment);
-            ASSERT(newAllocation == newBasePointer);
-            // Old   [ 8 ][  content  ]
-            // Now   [   ][  content  ]
-            // New   [  content  ]...
-            memmove(newBasePointer, bitwise_cast<char*>(newBasePointer) + halfAlignment, oldCellSize + PreciseAllocation::headerSize());
-        } else {
-            ASSERT(newAdjustedAlignment);
-            ASSERT(newAllocation != newBasePointer);
-            ASSERT(newAllocation == bitwise_cast<void*>(bitwise_cast<char*>(newBasePointer) + halfAlignment));
-            // Old   [  content  ]
-            // Now   [  content  ][   ]
-            // New   [ 8 ][  content  ]
-            memmove(bitwise_cast<char*>(newBasePointer) + halfAlignment, newBasePointer, oldCellSize + PreciseAllocation::headerSize());
-        }
-    }
+    // realloc preserves bytes relative to the malloc base. Restore the header
+    // and surviving payload to their aligned position when that base moves.
+    if (oldAdjustedAlignment != newAdjustedAlignment)
+        memmove(newAllocation, bitwise_cast<char*>(newBasePointer) + oldAdjustedAlignment,
+            headerSize() + std::min<size_t>(oldCellSize, size));
 
     newAllocation->m_cellSize = size;
+#if OS(AMIGAOS3)
+    newAllocation->m_alignmentAdjustment = newAdjustedAlignment;
+#else
     newAllocation->m_adjustedAlignment = newAdjustedAlignment;
+#endif
     return newAllocation;
 }
 
@@ -125,18 +108,15 @@ PreciseAllocation* PreciseAllocation::createForLowerTier(Heap& heap, size_t size
     if constexpr (validateDFGDoesGC)
         heap.verifyCanGC();
 
-    size_t adjustedAlignmentAllocationSize = headerSize() + size + halfAlignment;
-    static_assert(halfAlignment == 8, "We assume that memory returned by malloc has alignment >= 8.");
+    RELEASE_ASSERT(size <= SIZE_MAX - headerSize() - alignmentSlack);
+    size_t adjustedAlignmentAllocationSize = headerSize() + size + alignmentSlack;
 
     void* space = subspace->alignedMemoryAllocator()->tryAllocateMemory(adjustedAlignmentAllocationSize);
     RELEASE_ASSERT(space);
 
-    bool adjustedAlignment = false;
-    if (!isAlignedForPreciseAllocation(space)) {
-        space = bitwise_cast<void*>(bitwise_cast<uintptr_t>(space) + halfAlignment);
-        adjustedAlignment = true;
-        ASSERT(isAlignedForPreciseAllocation(space));
-    }
+    uint8_t adjustedAlignment = alignmentAdjustmentForPreciseAllocation(space);
+    ASSERT(adjustedAlignment <= alignmentSlack);
+    space = bitwise_cast<char*>(space) + adjustedAlignment;
 
     if (scribbleFreeCells())
         scribble(space, size);
@@ -150,16 +130,14 @@ PreciseAllocation* PreciseAllocation::reuseForLowerTier()
     Heap& heap = *this->heap();
     size_t size = m_cellSize;
     Subspace* subspace = m_subspace;
-    bool adjustedAlignment = m_adjustedAlignment;
+    uint8_t adjustedAlignment = alignmentAdjustment();
     uint8_t lowerTierIndex = m_lowerTierIndex;
     void* basePointer = this->basePointer();
 
     this->~PreciseAllocation();
 
-    void* space = basePointer;
-    ASSERT((!isAlignedForPreciseAllocation(basePointer)) == adjustedAlignment);
-    if (adjustedAlignment)
-        space = bitwise_cast<void*>(bitwise_cast<uintptr_t>(basePointer) + halfAlignment);
+    ASSERT(alignmentAdjustmentForPreciseAllocation(basePointer) == adjustedAlignment);
+    void* space = bitwise_cast<char*>(basePointer) + adjustedAlignment;
 
     PreciseAllocation* preciseAllocation = new (NotNull, space) PreciseAllocation(heap, size, subspace, 0, adjustedAlignment);
     preciseAllocation->m_lowerTierIndex = lowerTierIndex;
@@ -167,12 +145,16 @@ PreciseAllocation* PreciseAllocation::reuseForLowerTier()
     return preciseAllocation;
 }
 
-PreciseAllocation::PreciseAllocation(Heap& heap, size_t size, Subspace* subspace, unsigned indexInSpace, bool adjustedAlignment)
+PreciseAllocation::PreciseAllocation(Heap& heap, size_t size, Subspace* subspace, unsigned indexInSpace, uint8_t adjustedAlignment)
     : m_indexInSpace(indexInSpace)
     , m_cellSize(size)
     , m_isNewlyAllocated(true)
     , m_hasValidCell(true)
+#if OS(AMIGAOS3)
+    , m_alignmentAdjustment(adjustedAlignment)
+#else
     , m_adjustedAlignment(adjustedAlignment)
+#endif
     , m_attributes(subspace->attributes())
     , m_subspace(subspace)
     , m_weakSet(heap.vm())

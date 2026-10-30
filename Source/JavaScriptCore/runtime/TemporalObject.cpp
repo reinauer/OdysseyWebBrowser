@@ -324,9 +324,13 @@ double roundNumberToIncrement(double x, double increment, RoundingMode mode)
     case RoundingMode::Floor:
         return std::floor(quotient) * increment;
     case RoundingMode::Trunc:
-        return std::trunc(quotient) * increment;
+        return ::trunc(quotient) * increment;
     case RoundingMode::HalfExpand:
+#if OS(AMIGAOS3)
+        return ::round(quotient) * increment;
+#else
         return std::round(quotient) * increment;
+#endif
     }
 }
 

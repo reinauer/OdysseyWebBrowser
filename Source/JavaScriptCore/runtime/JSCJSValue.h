@@ -30,6 +30,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <type_traits>
 #include <wtf/Assertions.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
@@ -315,6 +316,14 @@ public:
     JSValue get(JSGlobalObject*, unsigned propertyName) const;
     JSValue get(JSGlobalObject*, unsigned propertyName, PropertySlot&) const;
     JSValue get(JSGlobalObject*, uint64_t propertyName) const;
+
+    // uint32_t is unsigned long on some 32-bit ABIs.
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    JSValue get(JSGlobalObject* globalObject, Integer propertyName) const
+    {
+        static_assert(sizeof(unsigned) == sizeof(Integer));
+        return get(globalObject, static_cast<unsigned>(propertyName));
+    }
 
     template<typename T, typename PropertyNameType>
     T getAs(JSGlobalObject*, PropertyNameType) const;

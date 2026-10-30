@@ -491,14 +491,22 @@ static ALWAYS_INLINE double log1pDoubleImpl(double value)
 {
     if (value == 0.0)
         return value;
+#if OS(AMIGAOS3)
+    return ::log1p(value);
+#else
     return std::log1p(value);
+#endif
 }
 
 static ALWAYS_INLINE float log1pFloatImpl(float value)
 {
     if (value == 0.0)
         return value;
+#if OS(AMIGAOS3)
+    return ::log1pf(value);
+#else
     return std::log1p(value);
+#endif
 }
 
 double log1p(double value)
@@ -509,11 +517,11 @@ double log1p(double value)
 #define JSC_DEFINE_VIA_STD(capitalizedName, lowerName) \
     JSC_DEFINE_JIT_OPERATION(lowerName##Double, double, (double value)) \
     { \
-        return std::lowerName(value); \
+        return Math::lowerName(value); \
     } \
     JSC_DEFINE_JIT_OPERATION(lowerName##Float, float, (float value)) \
     { \
-        return std::lowerName(value); \
+        return Math::lowerName(value); \
     }
 FOR_EACH_ARITH_UNARY_OP_STD(JSC_DEFINE_VIA_STD)
 #undef JSC_DEFINE_VIA_STD
@@ -532,11 +540,11 @@ FOR_EACH_ARITH_UNARY_OP_CUSTOM(JSC_DEFINE_VIA_CUSTOM)
 
 JSC_DEFINE_JIT_OPERATION(truncDouble, double, (double value))
 {
-    return std::trunc(value);
+    return ::trunc(value);
 }
 JSC_DEFINE_JIT_OPERATION(truncFloat, float, (float value))
 {
-    return std::trunc(value);
+    return ::trunc(value);
 }
 JSC_DEFINE_JIT_OPERATION(ceilDouble, double, (double value))
 {

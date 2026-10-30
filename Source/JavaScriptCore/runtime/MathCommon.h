@@ -49,17 +49,17 @@ constexpr double minSafeInteger()
 
 inline bool isInteger(double value)
 {
-    return std::isfinite(value) && std::trunc(value) == value;
+    return std::isfinite(value) && ::trunc(value) == value;
 }
 
 inline bool isInteger(float value)
 {
-    return std::isfinite(value) && std::trunc(value) == value;
+    return std::isfinite(value) && ::trunc(value) == value;
 }
 
 inline bool isSafeInteger(double value)
 {
-    return std::trunc(value) == value && std::abs(value) <= maxSafeInteger();
+    return ::trunc(value) == value && std::abs(value) <= maxSafeInteger();
 }
 
 // This in the ToInt32 operation is defined in section 9.5 of the ECMA-262 spec.
@@ -252,10 +252,20 @@ namespace Math {
     FOR_EACH_ARITH_UNARY_OP_STD(macro) \
     FOR_EACH_ARITH_UNARY_OP_CUSTOM(macro) \
 
+#if OS(AMIGAOS3)
+// The SDK exposes C99 math functions in the global namespace only. Keep
+// separate float overloads so callers use the corresponding *f functions.
+#define JSC_DEFINE_VIA_STD(capitalizedName, lowerName) \
+    inline double lowerName(double value) { return ::lowerName(value); } \
+    inline float lowerName(float value) { return ::lowerName##f(value); } \
+    JSC_DECLARE_JIT_OPERATION(lowerName##Double, double, (double)); \
+    JSC_DECLARE_JIT_OPERATION(lowerName##Float, float, (float));
+#else
 #define JSC_DEFINE_VIA_STD(capitalizedName, lowerName) \
     using std::lowerName; \
     JSC_DECLARE_JIT_OPERATION(lowerName##Double, double, (double)); \
     JSC_DECLARE_JIT_OPERATION(lowerName##Float, float, (float));
+#endif
 FOR_EACH_ARITH_UNARY_OP_STD(JSC_DEFINE_VIA_STD)
 #undef JSC_DEFINE_VIA_STD
 

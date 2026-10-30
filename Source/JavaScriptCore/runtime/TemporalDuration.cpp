@@ -289,21 +289,21 @@ void TemporalDuration::balance(Subdurations& subdurations, TemporalUnit largestU
     subdurations.clear();
 
     if (largestUnit <= TemporalUnit::Day) {
-        subdurations.setDays(std::trunc(nanoseconds / nanosecondsPerDay));
+        subdurations.setDays(::trunc(nanoseconds / nanosecondsPerDay));
         nanoseconds = std::fmod(nanoseconds, nanosecondsPerDay);
     }
 
-    double microseconds = std::trunc(nanoseconds / 1000);
-    double milliseconds = std::trunc(microseconds / 1000);
-    double seconds = std::trunc(milliseconds / 1000);
-    double minutes = std::trunc(seconds / 60);
+    double microseconds = ::trunc(nanoseconds / 1000);
+    double milliseconds = ::trunc(microseconds / 1000);
+    double seconds = ::trunc(milliseconds / 1000);
+    double minutes = ::trunc(seconds / 60);
     if (largestUnit <= TemporalUnit::Hour) {
         subdurations.setNanoseconds(std::fmod(nanoseconds, 1000));
         subdurations.setMicroseconds(std::fmod(microseconds, 1000));
         subdurations.setMilliseconds(std::fmod(milliseconds, 1000));
         subdurations.setSeconds(std::fmod(seconds, 60));
         subdurations.setMinutes(std::fmod(minutes, 60));
-        subdurations.setHours(std::trunc(minutes / 60));
+        subdurations.setHours(::trunc(minutes / 60));
     } else if (largestUnit == TemporalUnit::Minute) {
         subdurations.setNanoseconds(std::fmod(nanoseconds, 1000));
         subdurations.setMicroseconds(std::fmod(microseconds, 1000));
@@ -544,11 +544,11 @@ String TemporalDuration::toString(const TemporalDuration::Subdurations& subdurat
 {
     ASSERT(!precision || precision.value() < 10);
 
-    auto balancedMicroseconds = subdurations.microseconds() + std::trunc(subdurations.nanoseconds() / 1000);
+    auto balancedMicroseconds = subdurations.microseconds() + ::trunc(subdurations.nanoseconds() / 1000);
     auto balancedNanoseconds = std::fmod(subdurations.nanoseconds(), 1000);
-    auto balancedMilliseconds = subdurations.milliseconds() + std::trunc(balancedMicroseconds / 1000);
+    auto balancedMilliseconds = subdurations.milliseconds() + ::trunc(balancedMicroseconds / 1000);
     balancedMicroseconds = std::fmod(balancedMicroseconds, 1000);
-    auto balancedSeconds = subdurations.seconds() + std::trunc(balancedMilliseconds / 1000);
+    auto balancedSeconds = subdurations.seconds() + ::trunc(balancedMilliseconds / 1000);
     balancedMilliseconds = std::fmod(balancedMilliseconds, 1000);
 
     // TEMPORARY! (pending spec discussion about maximum values @ https://github.com/tc39/proposal-temporal/issues/1604)

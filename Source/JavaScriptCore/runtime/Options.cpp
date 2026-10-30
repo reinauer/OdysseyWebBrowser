@@ -89,7 +89,7 @@ std::optional<OptionsStorage::Unsigned> parse(const char* string)
     return std::nullopt;
 }
 
-#if CPU(ADDRESS64) || OS(DARWIN)
+#if CPU(ADDRESS64) || OS(DARWIN) || OS(AMIGAOS3)
 template<>
 std::optional<OptionsStorage::Size> parse(const char* string)
 {
@@ -98,7 +98,7 @@ std::optional<OptionsStorage::Size> parse(const char* string)
         return value;
     return std::nullopt;
 }
-#endif // CPU(ADDRESS64) || OS(DARWIN)
+#endif // CPU(ADDRESS64) || OS(DARWIN) || OS(AMIGAOS3)
 
 template<>
 std::optional<OptionsStorage::Double> parse(const char* string)

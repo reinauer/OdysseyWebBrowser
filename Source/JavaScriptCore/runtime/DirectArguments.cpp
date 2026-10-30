@@ -154,7 +154,7 @@ void DirectArguments::unmapArgument(JSGlobalObject* globalObject, unsigned index
 void DirectArguments::copyToArguments(JSGlobalObject* globalObject, JSValue* firstElementDest, unsigned offset, unsigned length)
 {
     if (!m_mappedArguments) {
-        unsigned limit = std::min(length + offset, m_length);
+        unsigned limit = std::min<unsigned>(length + offset, m_length);
         unsigned i;
         for (i = offset; i < limit; ++i)
             firstElementDest[i - offset] = storage()[i].get();

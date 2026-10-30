@@ -142,22 +142,22 @@ inline JSValue jsNaN()
 
 inline JSValue::JSValue(char i)
 {
-    *this = JSValue(static_cast<int32_t>(i));
+    *this = JSValue(static_cast<int>(i));
 }
 
 inline JSValue::JSValue(unsigned char i)
 {
-    *this = JSValue(static_cast<int32_t>(i));
+    *this = JSValue(static_cast<int>(i));
 }
 
 inline JSValue::JSValue(short i)
 {
-    *this = JSValue(static_cast<int32_t>(i));
+    *this = JSValue(static_cast<int>(i));
 }
 
 inline JSValue::JSValue(unsigned short i)
 {
-    *this = JSValue(static_cast<int32_t>(i));
+    *this = JSValue(static_cast<int>(i));
 }
 
 inline JSValue::JSValue(unsigned i)
@@ -166,7 +166,7 @@ inline JSValue::JSValue(unsigned i)
         *this = JSValue(EncodeAsDouble, static_cast<double>(i));
         return;
     }
-    *this = JSValue(static_cast<int32_t>(i));
+    *this = JSValue(static_cast<int>(i));
 }
 
 inline JSValue::JSValue(long i)
@@ -175,7 +175,7 @@ inline JSValue::JSValue(long i)
         *this = JSValue(EncodeAsDouble, static_cast<double>(i));
         return;
     }
-    *this = JSValue(static_cast<int32_t>(i));
+    *this = JSValue(static_cast<int>(i));
 }
 
 inline JSValue::JSValue(unsigned long i)
@@ -184,7 +184,7 @@ inline JSValue::JSValue(unsigned long i)
         *this = JSValue(EncodeAsDouble, static_cast<double>(i));
         return;
     }
-    *this = JSValue(static_cast<uint32_t>(i));
+    *this = JSValue(static_cast<unsigned>(i));
 }
 
 inline JSValue::JSValue(long long i)
@@ -193,7 +193,7 @@ inline JSValue::JSValue(long long i)
         *this = JSValue(EncodeAsDouble, static_cast<double>(i));
         return;
     }
-    *this = JSValue(static_cast<int32_t>(i));
+    *this = JSValue(static_cast<int>(i));
 }
 
 inline JSValue::JSValue(unsigned long long i)
@@ -202,7 +202,7 @@ inline JSValue::JSValue(unsigned long long i)
         *this = JSValue(EncodeAsDouble, static_cast<double>(i));
         return;
     }
-    *this = JSValue(static_cast<uint32_t>(i));
+    *this = JSValue(static_cast<unsigned>(i));
 }
 
 inline JSValue::JSValue(double d)

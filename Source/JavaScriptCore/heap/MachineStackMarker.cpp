@@ -65,11 +65,20 @@ static inline int osRedZoneAdjustment()
 static std::pair<void*, size_t> captureStack(Thread& thread, void* stackTop)
 {
     char* begin = reinterpret_cast_ptr<char*>(thread.stack().origin());
+#if OS(AMIGAOS3)
+    // Keep the complete word-aligned Exec register frame.
+    char* end = static_cast<char*>(stackTop);
+#else
     char* end = bitwise_cast<char*>(WTF::roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(stackTop)));
+#endif
     ASSERT(begin >= end);
 
     char* endWithRedZone = end + osRedZoneAdjustment();
+#if OS(AMIGAOS3)
+    ASSERT(!(reinterpret_cast<uintptr_t>(endWithRedZone) & 1));
+#else
     ASSERT(WTF::roundUpToMultipleOf<sizeof(void*)>(reinterpret_cast<uintptr_t>(endWithRedZone)) == reinterpret_cast<uintptr_t>(endWithRedZone));
+#endif
 
     if (endWithRedZone < thread.stack().end())
         endWithRedZone = reinterpret_cast_ptr<char*>(thread.stack().end());
@@ -81,6 +90,13 @@ static std::pair<void*, size_t> captureStack(Thread& thread, void* stackTop)
 SUPPRESS_ASAN
 static void copyMemory(void* dst, const void* src, size_t size)
 {
+#if OS(AMIGAOS3)
+    // Both source stacks and concatenated snapshots may be only word aligned.
+    auto* destination = static_cast<unsigned char*>(dst);
+    auto* source = static_cast<const unsigned char*>(src);
+    while (size--)
+        *destination++ = *source++;
+#else
     size_t dstAsSize = reinterpret_cast<size_t>(dst);
     size_t srcAsSize = reinterpret_cast<size_t>(src);
     RELEASE_ASSERT(dstAsSize == WTF::roundUpToMultipleOf<sizeof(CPURegister)>(dstAsSize));
@@ -92,6 +108,7 @@ static void copyMemory(void* dst, const void* src, size_t size)
     size /= sizeof(CPURegister);
     while (size--)
         *dstPtr++ = *srcPtr++;
+#endif
 }
     
 

@@ -34,6 +34,9 @@
 #include "JSCellInlines.h"
 #include "MarkedBlockInlines.h"
 #include <wtf/OSAllocator.h>
+#if OS(AMIGAOS3)
+#include <wtf/amigaos3/ConservativeScan.h>
+#endif
 
 namespace JSC {
 
@@ -91,14 +94,22 @@ void ConservativeRoots::genericAddSpan(void* begin, void* end, MarkHook& markHoo
         end = swapTemp;
     }
 
+#if !OS(AMIGAOS3)
     RELEASE_ASSERT(isPointerAligned(begin));
     RELEASE_ASSERT(isPointerAligned(end));
+#endif
 
     TinyBloomFilter filter = m_heap.objectSpace().blocks().filter(); // Make a local copy of filter to show the compiler it won't alias, and can be register-allocated.
     HeapVersion markingVersion = m_heap.objectSpace().markingVersion();
     HeapVersion newlyAllocatedVersion = m_heap.objectSpace().newlyAllocatedVersion();
+#if OS(AMIGAOS3)
+    WTF::forEachAmigaOS3ConservativePointer(begin, end, [&](void* candidate) {
+        genericAddPointer(candidate, markingVersion, newlyAllocatedVersion, filter, markHook);
+    });
+#else
     for (char** it = static_cast<char**>(begin); it != static_cast<char**>(end); ++it)
         genericAddPointer(*it, markingVersion, newlyAllocatedVersion, filter, markHook);
+#endif
 }
 
 class DummyMarkHook {

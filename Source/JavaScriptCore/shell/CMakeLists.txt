@@ -1,6 +1,6 @@
 set(jsc_SOURCES ../jsc.cpp)
-if (NOT "${PORT}" STREQUAL "MorphOS")
-    set(jsc_LIBRARIES $(jsc_LIBRARIES)
+if (NOT "${PORT}" STREQUAL "MorphOS" AND NOT AmigaOS3)
+    set(jsc_LIBRARIES ${jsc_LIBRARIES}
         ${CMAKE_DL_LIBS}
     )
 endif ()
@@ -96,6 +96,21 @@ endif ()
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 
 WEBKIT_EXECUTABLE(jsc)
+
+if (AmigaOS3)
+    set(odyssey_math_test_SOURCES ${CMAKE_SOURCE_DIR}/Tools/AmigaOS3/math-test.cpp)
+    set(odyssey_math_test_PRIVATE_INCLUDE_DIRECTORIES ${jsc_PRIVATE_INCLUDE_DIRECTORIES})
+    set(odyssey_math_test_FRAMEWORKS ${jsc_FRAMEWORKS})
+    WEBKIT_EXECUTABLE_DECLARE(odyssey_math_test)
+    WEBKIT_EXECUTABLE(odyssey_math_test)
+    set_target_properties(odyssey_math_test PROPERTIES OUTPUT_NAME odyssey-math-test)
+    set(odyssey_precise_allocation_test_SOURCES ${CMAKE_SOURCE_DIR}/Tools/AmigaOS3/precise-allocation-test.cpp)
+    set(odyssey_precise_allocation_test_PRIVATE_INCLUDE_DIRECTORIES ${jsc_PRIVATE_INCLUDE_DIRECTORIES})
+    set(odyssey_precise_allocation_test_FRAMEWORKS ${jsc_FRAMEWORKS})
+    WEBKIT_EXECUTABLE_DECLARE(odyssey_precise_allocation_test)
+    WEBKIT_EXECUTABLE(odyssey_precise_allocation_test)
+    set_target_properties(odyssey_precise_allocation_test PROPERTIES OUTPUT_NAME odyssey-precise-allocation-test)
+endif ()
 
 if (SHOULD_INSTALL_JS_SHELL)
     install(TARGETS jsc DESTINATION "${LIBEXEC_INSTALL_DIR}")

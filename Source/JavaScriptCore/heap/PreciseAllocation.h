@@ -158,7 +158,15 @@ public:
     static constexpr unsigned headerSize() { return ((sizeof(PreciseAllocation) + halfAlignment - 1) & ~(halfAlignment - 1)) | halfAlignment; }
 
 private:
-    PreciseAllocation(Heap&, size_t, Subspace*, unsigned indexInSpace, bool adjustedAlignment);
+    PreciseAllocation(Heap&, size_t, Subspace*, unsigned indexInSpace, uint8_t alignmentAdjustment);
+
+#if OS(AMIGAOS3)
+    // The native malloc ABI guarantees only word alignment.
+    static constexpr unsigned alignmentSlack = alignment - 1;
+#else
+    static constexpr unsigned alignmentSlack = halfAlignment;
+#endif
+    uint8_t alignmentAdjustment() const;
     
     void* basePointer() const;
     
@@ -166,7 +174,11 @@ private:
     size_t m_cellSize;
     bool m_isNewlyAllocated : 1;
     bool m_hasValidCell : 1;
+#if OS(AMIGAOS3)
+    uint8_t m_alignmentAdjustment;
+#else
     bool m_adjustedAlignment : 1;
+#endif
     Atomic<bool> m_isMarked;
     CellAttributes m_attributes;
     uint8_t m_lowerTierIndex { UINT8_MAX };
@@ -174,11 +186,18 @@ private:
     WeakSet m_weakSet;
 };
 
+inline uint8_t PreciseAllocation::alignmentAdjustment() const
+{
+#if OS(AMIGAOS3)
+    return m_alignmentAdjustment;
+#else
+    return m_adjustedAlignment ? halfAlignment : 0;
+#endif
+}
+
 inline void* PreciseAllocation::basePointer() const
 {
-    if (m_adjustedAlignment)
-        return bitwise_cast<char*>(this) - halfAlignment;
-    return bitwise_cast<void*>(this);
+    return bitwise_cast<char*>(this) - alignmentAdjustment();
 }
 
 } // namespace JSC

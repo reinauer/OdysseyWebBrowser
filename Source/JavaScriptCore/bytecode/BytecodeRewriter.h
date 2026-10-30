@@ -231,7 +231,7 @@ private:
     void applyModification();
     void adjustJumpTargetsInFragment(unsigned finalOffset, Insertion&);
 
-    int adjustJumpTarget(InsertionPoint startPoint, InsertionPoint jumpTargetPoint);
+    int32_t adjustJumpTarget(InsertionPoint startPoint, InsertionPoint jumpTargetPoint);
     template<typename Iterator> int calculateDifference(Iterator begin, Iterator end);
 
     BytecodeGenerator& m_bytecodeGenerator;

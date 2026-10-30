@@ -26,6 +26,7 @@
 #pragma once
 
 #include <array>
+#include <type_traits>
 #include <wtf/HashFunctions.h>
 #include <wtf/text/WTFString.h>
 
@@ -66,6 +67,14 @@ public:
         entry.value = String::number(i);
         return entry.value;
     }
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, int32_t> || std::is_same_v<Integer, uint32_t>, int> = 0>
+    ALWAYS_INLINE const String& add(Integer value)
+    {
+        using NativeInteger = std::conditional_t<std::is_signed_v<Integer>, int, unsigned>;
+        static_assert(sizeof(NativeInteger) == sizeof(Integer));
+        return add(static_cast<NativeInteger>(value));
+    }
+
 private:
     static const size_t cacheSize = 64;
 

@@ -1594,7 +1594,7 @@ void JSObject::convertFromCopyOnWrite(VM& vm)
     const bool hasIndexingHeader = true;
     Butterfly* oldButterfly = butterfly();
     size_t propertyCapacity = 0;
-    unsigned newVectorLength = Butterfly::optimalContiguousVectorLength(propertyCapacity, std::min(oldButterfly->vectorLength() * 2, MAX_STORAGE_VECTOR_LENGTH));
+    unsigned newVectorLength = Butterfly::optimalContiguousVectorLength(propertyCapacity, std::min<uint32_t>(oldButterfly->vectorLength() * 2, MAX_STORAGE_VECTOR_LENGTH));
     Butterfly* newButterfly = Butterfly::createUninitialized(vm, this, 0, propertyCapacity, hasIndexingHeader, newVectorLength * sizeof(JSValue));
 
     gcSafeMemcpy(newButterfly->propertyStorage(), oldButterfly->propertyStorage(), oldButterfly->vectorLength() * sizeof(JSValue) + sizeof(IndexingHeader));

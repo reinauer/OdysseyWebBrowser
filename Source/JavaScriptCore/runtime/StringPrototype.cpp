@@ -1726,7 +1726,7 @@ JSC_DEFINE_HOST_FUNCTION(stringProtoFuncStartsWith, (JSGlobalObject* globalObjec
     JSValue positionArg = callFrame->argument(1);
     unsigned start = 0;
     if (positionArg.isInt32())
-        start = std::max(0, positionArg.asInt32());
+        start = std::max<int32_t>(0, positionArg.asInt32());
     else {
         unsigned length = stringToSearchIn.length();
         start = clampAndTruncateToUnsigned(positionArg.toIntegerOrInfinity(globalObject), 0, length);
@@ -1762,7 +1762,7 @@ JSC_DEFINE_HOST_FUNCTION(stringProtoFuncEndsWith, (JSGlobalObject* globalObject,
     JSValue endPositionArg = callFrame->argument(1);
     unsigned end = length;
     if (endPositionArg.isInt32())
-        end = std::max(0, endPositionArg.asInt32());
+        end = std::max<int32_t>(0, endPositionArg.asInt32());
     else if (!endPositionArg.isUndefined()) {
         end = clampAndTruncateToUnsigned(endPositionArg.toIntegerOrInfinity(globalObject), 0, length);
         RETURN_IF_EXCEPTION(scope, encodedJSValue());
@@ -1776,7 +1776,7 @@ static EncodedJSValue stringIncludesImpl(JSGlobalObject* globalObject, VM& vm, S
     auto scope = DECLARE_THROW_SCOPE(vm);
     unsigned start = 0;
     if (positionArg.isInt32())
-        start = std::max(0, positionArg.asInt32());
+        start = std::max<int32_t>(0, positionArg.asInt32());
     else {
         unsigned length = stringToSearchIn.length();
         start = clampAndTruncateToUnsigned(positionArg.toIntegerOrInfinity(globalObject), 0, length);

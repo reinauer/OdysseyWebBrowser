@@ -23,6 +23,7 @@
 #include "ArrayConventions.h"
 #include "PrivateName.h"
 #include "VM.h"
+#include <type_traits>
 #include <wtf/text/CString.h>
 #include <wtf/text/UniquedStringImpl.h>
 #include <wtf/text/WTFString.h>
@@ -132,6 +133,16 @@ public:
     JS_EXPORT_PRIVATE static Identifier from(VM&, unsigned y);
     JS_EXPORT_PRIVATE static Identifier from(VM&, int y);
     JS_EXPORT_PRIVATE static Identifier from(VM&, double y);
+    // Some 32-bit ABIs typedef int32_t/uint32_t to long/unsigned long.
+    // Forward those exact-width types without choosing double or uint64_t.
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, int32_t> || std::is_same_v<Integer, uint32_t>, int> = 0>
+    ALWAYS_INLINE static Identifier from(VM& vm, Integer y)
+    {
+        using NativeInteger = std::conditional_t<std::is_signed_v<Integer>, int, unsigned>;
+        static_assert(sizeof(NativeInteger) == sizeof(Integer));
+        return from(vm, static_cast<NativeInteger>(y));
+    }
+
     ALWAYS_INLINE static Identifier from(VM& vm, uint64_t y)
     {
         if (static_cast<uint32_t>(y) == y)

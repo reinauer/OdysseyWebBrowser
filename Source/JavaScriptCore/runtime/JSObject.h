@@ -46,6 +46,7 @@
 #include "VM.h"
 #include "JSString.h"
 #include "SparseArrayValueMap.h"
+#include <type_traits>
 #include <wtf/StdLibExtras.h>
 
 namespace JSC {
@@ -152,6 +153,15 @@ public:
     JSValue get(JSGlobalObject*, unsigned propertyName) const;
     JSValue get(JSGlobalObject*, uint64_t propertyName) const;
 
+    // uint32_t need not be unsigned int. Select the 32-bit index overload
+    // explicitly on ABIs where unsigned long is also 32 bits.
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    JSValue get(JSGlobalObject* globalObject, Integer propertyName) const
+    {
+        static_assert(sizeof(unsigned) == sizeof(Integer));
+        return get(globalObject, static_cast<unsigned>(propertyName));
+    }
+
     template<typename T, typename PropertyNameType>
     T getAs(JSGlobalObject*, PropertyNameType) const;
 
@@ -159,6 +169,13 @@ public:
     bool getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&);
     bool getPropertySlot(JSGlobalObject*, unsigned propertyName, PropertySlot&);
     bool getPropertySlot(JSGlobalObject*, uint64_t propertyName, PropertySlot&);
+
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    bool getPropertySlot(JSGlobalObject* globalObject, Integer propertyName, PropertySlot& slot)
+    {
+        return getPropertySlot(globalObject, static_cast<unsigned>(propertyName), slot);
+    }
+
     template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(JSGlobalObject*, PropertyName, CallbackWhenNoException) const;
     template<typename CallbackWhenNoException> typename std::result_of<CallbackWhenNoException(bool, PropertySlot&)>::type getPropertySlot(JSGlobalObject*, PropertyName, PropertySlot&, CallbackWhenNoException) const;
 
@@ -218,6 +235,12 @@ public:
         return methodTable(vm)->putByIndex(this, globalObject, propertyName, value, shouldThrow);
     }
 
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    ALWAYS_INLINE bool putByIndexInline(JSGlobalObject* globalObject, Integer propertyName, JSValue value, bool shouldThrow)
+    {
+        return putByIndexInline(globalObject, static_cast<unsigned>(propertyName), value, shouldThrow);
+    }
+
     ALWAYS_INLINE bool putByIndexInline(JSGlobalObject* globalObject, uint64_t propertyName, JSValue value, bool shouldThrow)
     {
         VM& vm = getVM(globalObject);
@@ -268,6 +291,12 @@ public:
         return putDirectIndex(globalObject, propertyName, value, 0, PutDirectIndexLikePutDirect);
     }
 
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    ALWAYS_INLINE bool putDirectIndex(JSGlobalObject* globalObject, Integer propertyName, JSValue value, unsigned attributes, PutDirectIndexMode mode)
+    {
+        return putDirectIndex(globalObject, static_cast<unsigned>(propertyName), value, attributes, mode);
+    }
+
     ALWAYS_INLINE bool putDirectIndex(JSGlobalObject* globalObject, uint64_t propertyName, JSValue value, unsigned attributes, PutDirectIndexMode mode)
     {
         if (LIKELY(propertyName <= MAX_ARRAY_INDEX))
@@ -316,6 +345,12 @@ public:
             RELEASE_ASSERT_NOT_REACHED();
             return false;
         }
+    }
+
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    bool canGetIndexQuickly(Integer i) const
+    {
+        return canGetIndexQuickly(static_cast<unsigned>(i));
     }
 
     bool canGetIndexQuickly(uint64_t i) const
@@ -384,6 +419,12 @@ public:
             break;
         }
         return JSValue();
+    }
+
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    JSValue tryGetIndexQuickly(Integer i) const
+    {
+        return tryGetIndexQuickly(static_cast<unsigned>(i));
     }
 
     JSValue tryGetIndexQuickly(uint64_t i) const
@@ -660,6 +701,13 @@ public:
     JS_EXPORT_PRIVATE bool hasProperty(JSGlobalObject*, PropertyName) const;
     JS_EXPORT_PRIVATE bool hasProperty(JSGlobalObject*, unsigned propertyName) const;
     bool hasProperty(JSGlobalObject*, uint64_t propertyName) const;
+
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, uint32_t>, int> = 0>
+    bool hasProperty(JSGlobalObject* globalObject, Integer propertyName) const
+    {
+        return hasProperty(globalObject, static_cast<unsigned>(propertyName));
+    }
+
     bool hasEnumerableProperty(JSGlobalObject*, PropertyName) const;
     bool hasEnumerableProperty(JSGlobalObject*, unsigned propertyName) const;
     bool hasOwnProperty(JSGlobalObject*, PropertyName, PropertySlot&) const;

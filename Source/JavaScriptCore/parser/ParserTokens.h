@@ -27,6 +27,7 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <type_traits>
 
 namespace WTF {
 class PrintStream;
@@ -217,6 +218,23 @@ struct JSTextPosition {
     JSTextPosition operator+(unsigned adjustment) const { return *this + static_cast<int>(adjustment); }
     JSTextPosition operator-(int adjustment) const { return *this + (- adjustment); }
     JSTextPosition operator-(unsigned adjustment) const { return *this + (- static_cast<int>(adjustment)); }
+
+    // Fixed-width types may use long rather than int on a 32-bit ABI.
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, int32_t> || std::is_same_v<Integer, uint32_t>, int> = 0>
+    JSTextPosition operator+(Integer adjustment) const
+    {
+        using NativeInteger = std::conditional_t<std::is_signed_v<Integer>, int, unsigned>;
+        static_assert(sizeof(NativeInteger) == sizeof(Integer));
+        return *this + static_cast<NativeInteger>(adjustment);
+    }
+
+    template<typename Integer, std::enable_if_t<std::is_same_v<Integer, int32_t> || std::is_same_v<Integer, uint32_t>, int> = 0>
+    JSTextPosition operator-(Integer adjustment) const
+    {
+        using NativeInteger = std::conditional_t<std::is_signed_v<Integer>, int, unsigned>;
+        static_assert(sizeof(NativeInteger) == sizeof(Integer));
+        return *this - static_cast<NativeInteger>(adjustment);
+    }
 
     operator int() const { return offset; }
 
