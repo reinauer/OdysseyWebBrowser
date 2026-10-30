@@ -111,6 +111,16 @@ static void checkTime()
     }
     CHECK(!pthread_mutex_lock(&mutex));
     CHECK(pthread_cond_timedwait(&condition, &mutex, &deadline) == ETIMEDOUT);
+    // The SDK's NDK timeval uses unsigned fields. An inline timersub must
+    // still normalize the microsecond borrow across a second boundary.
+    CHECK(!gettimeofday(&now, nullptr));
+    deadline = { now.tv_sec + 1, 0 };
+    CHECK(pthread_cond_timedwait(&condition, &mutex, &deadline) == ETIMEDOUT);
+    CHECK(!gettimeofday(&now, nullptr));
+    deadline = { now.tv_sec - 1, now.tv_usec * 1000L };
+    CHECK(pthread_cond_timedwait(&condition, &mutex, &deadline) == ETIMEDOUT);
+    deadline.tv_nsec = 1000000000L;
+    CHECK(pthread_cond_timedwait(&condition, &mutex, &deadline) == EINVAL);
     CHECK(!pthread_mutex_unlock(&mutex));
     CHECK(!pthread_cond_destroy(&condition));
     CHECK(!pthread_mutex_destroy(&mutex));

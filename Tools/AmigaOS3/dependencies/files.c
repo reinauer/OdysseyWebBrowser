@@ -1,6 +1,7 @@
 /* File operations needed by fontconfig, implemented with AmigaDOS. */
 #define _DEFAULT_SOURCE 1
 #include <sys/time.h>
+#include <utime.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -34,6 +35,10 @@ static int fileError(void)
     case ERROR_DISK_FULL: errno = ENOSPC; break;
     case ERROR_LOCK_COLLISION: case ERROR_LOCK_TIMEOUT: errno = EAGAIN; break;
     case ERROR_OBJECT_WRONG_TYPE: errno = ENOTDIR; break;
+    case ERROR_RENAME_ACROSS_DEVICES: errno = EXDEV; break;
+    case ERROR_TOO_MANY_LEVELS: errno = ELOOP; break;
+    case ERROR_LINE_TOO_LONG: errno = ENAMETOOLONG; break;
+    case ERROR_ACTION_NOT_KNOWN: errno = ENOTSUP; break;
     default: errno = EIO; break;
     }
     return -1;
@@ -62,8 +67,28 @@ static int fillStat(struct FileInfoBlock* info, struct stat* value)
     return 0;
 }
 
-int stat(const char* path, struct stat* value)
+static LONG readSoftLink(BPTR parent, const char* name, char* target)
 {
+    LONG length = ReadLink(((struct FileLock*)BADDR(parent))->fl_Task,
+        parent, name, target, PATH_MAX);
+    if (length == -2 || length >= PATH_MAX) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    if (length < 0) {
+        fileError();
+        return -1;
+    }
+    target[length] = 0;
+    return length;
+}
+
+static int statFollowingLinks(const char* path, struct stat* value, unsigned depth)
+{
+    if (depth == 40) {
+        errno = ELOOP;
+        return -1;
+    }
     BPTR lock = Lock(path, SHARED_LOCK);
     int examineParent = !lock && IoErr() == ERROR_OBJECT_IN_USE;
     if (!lock && !examineParent)
@@ -94,6 +119,32 @@ int stat(const char* path, struct stat* value)
         result = -1;
         while (ExNext(lock, info)) {
             if (!strcasecmp(name, info->fib_FileName)) {
+                if (info->fib_DirEntryType == ST_SOFTLINK) {
+                    /* Lock followed this link into an exclusively open
+                     * target. Continue following, preserving stat's API,
+                     * rather than returning the parent's link metadata. */
+                    char* target = malloc(PATH_MAX);
+                    char* absolute = NULL;
+                    result = -1;
+                    if (!target)
+                        errno = ENOMEM;
+                    else if (readSoftLink(lock, name, target) >= 0) {
+                        if (strchr(target, ':'))
+                            result = statFollowingLinks(target, value, depth + 1);
+                        else {
+                            absolute = malloc(PATH_MAX);
+                            if (!absolute) errno = ENOMEM;
+                            else if (!NameFromLock(lock, absolute, PATH_MAX)
+                                || !AddPart(absolute, target, PATH_MAX)) fileError();
+                            else result = statFollowingLinks(absolute, value, depth + 1);
+                        }
+                    }
+                    free(absolute);
+                    free(target);
+                    FreeDosObject(DOS_FIB, info);
+                    UnLock(lock);
+                    return result;
+                }
                 result = fillStat(info, value);
                 break;
             }
@@ -109,6 +160,11 @@ int stat(const char* path, struct stat* value)
     FreeDosObject(DOS_FIB, info);
     UnLock(lock);
     return result;
+}
+
+int stat(const char* path, struct stat* value)
+{
+    return statFollowingLinks(path, value, 0);
 }
 
 int fstat(int fd, struct stat* value)
@@ -132,6 +188,85 @@ int fstat(int fd, struct stat* value)
         }
     }
     FreeDosObject(DOS_FIB, info);
+    return result;
+}
+
+int lstat(const char* path, struct stat* value)
+{
+    if (!path || !*path) {
+        errno = path ? ENOENT : EFAULT;
+        return -1;
+    }
+    if (!value) {
+        errno = EFAULT;
+        return -1;
+    }
+    const char* name = FilePart(path);
+    /* A trailing separator names a directory, following a preceding link.
+     * A volume root has no final directory entry to enumerate. */
+    if (!*name)
+        return stat(path, value);
+    size_t parentLength = name - path;
+    char* parentName = malloc(parentLength + 1);
+    if (!parentName) {
+        errno = ENOMEM;
+        return -1;
+    }
+    memcpy(parentName, path, parentLength);
+    parentName[parentLength] = 0;
+    BPTR parent = Lock(parentName, SHARED_LOCK);
+    free(parentName);
+    if (!parent)
+        return fileError();
+    struct FileInfoBlock* info = AllocDosObject(DOS_FIB, NULL);
+    int result = -1;
+    if (!info) {
+        errno = ENOMEM;
+        goto done;
+    }
+    if (!Examine(parent, info)) {
+        fileError();
+        goto done;
+    }
+    if (info->fib_DirEntryType <= 0) {
+        errno = ENOTDIR;
+        goto done;
+    }
+    /* Lock/Examine follows soft links, even broken ones. ExNext on the
+     * parent supplies the link entry itself and also works on locked files. */
+    while (ExNext(parent, info)) {
+        if (strcasecmp(name, info->fib_FileName))
+            continue;
+        result = fillStat(info, value);
+        if (result)
+            goto done;
+        value->st_dev = ((struct FileLock*)BADDR(parent))->fl_Volume;
+        if (info->fib_DirEntryType == ST_SOFTLINK) {
+            char* target = malloc(PATH_MAX);
+            if (!target) {
+                errno = ENOMEM;
+                result = -1;
+                goto done;
+            }
+            /* ACTION_READ_LINK needs the parent handler and parent lock,
+             * with the final component relative to that lock. No target
+             * lock is acquired: a dangling link is still a valid entry. */
+            LONG length = readSoftLink(parent, name, target);
+            free(target);
+            if (length < 0) {
+                result = -1;
+                goto done;
+            }
+            value->st_mode = (value->st_mode & ~S_IFMT) | S_IFLNK;
+            value->st_size = length;
+        }
+        goto done;
+    }
+    if (IoErr() == ERROR_NO_MORE_ENTRIES) errno = ENOENT;
+    else fileError();
+done:
+    if (info) FreeDosObject(DOS_FIB, info);
+    UnLock(parent);
     return result;
 }
 
@@ -226,7 +361,9 @@ int rmdir(const char* path)
     return 0;
 }
 
-char* getcwd(char* buffer, size_t size)
+/* SDK chdir.o also defines getcwd. Wrap references instead of exporting a
+ * competing strong symbol when chdir is linked by JavaScriptCore. */
+char* __wrap_getcwd(char* buffer, size_t size)
 {
     int allocated = !buffer;
     if (!size && buffer) {
@@ -236,12 +373,24 @@ char* getcwd(char* buffer, size_t size)
     if (!size) size = 4096;
     if (!buffer && !(buffer = malloc(size)))
         return NULL;
-    if (!GetCurrentDirName(buffer, size)) {
+    /* The CLI's cached GetCurrentDirName can be empty or stale after
+     * CurrentDir/chdir. Resolve this task's actual current-directory lock. */
+    BPTR directory = Lock("", SHARED_LOCK);
+    if (!directory) {
         fileError();
-        if (IoErr() == ERROR_LINE_TOO_LONG) errno = ERANGE;
         if (allocated) free(buffer);
         return NULL;
     }
+    if (!NameFromLock(directory, buffer, size > LONG_MAX ? LONG_MAX : size)) {
+        LONG error = IoErr();
+        UnLock(directory);
+        SetIoErr(error);
+        fileError();
+        if (error == ERROR_LINE_TOO_LONG) errno = ERANGE;
+        if (allocated) free(buffer);
+        return NULL;
+    }
+    UnLock(directory);
     return buffer;
 }
 
@@ -281,24 +430,47 @@ int fcntl(int fd, int command, ...)
     return LockRecord(handle, lock->l_start, length, mode, 0x7fffffffUL) ? 0 : fileError();
 }
 
+static int linkError(const char* destination)
+{
+    LONG error = IoErr();
+    /* FFS reports OBJECT_IN_USE for an existing hard-link name, whereas
+     * RAM reports OBJECT_EXISTS. Neither permits replacing the entry. */
+    if (error == ERROR_OBJECT_IN_USE) {
+        struct stat existing;
+        if (!lstat(destination, &existing)) {
+            errno = EEXIST;
+            return -1;
+        }
+    }
+    SetIoErr(error);
+    return fileError();
+}
+
 int _link(const char* from, const char* to)
 {
     BPTR lock = Lock(from, SHARED_LOCK);
     if (!lock)
         return fileError();
-    int result = MakeLink(to, lock, LINK_HARD) ? 0 : fileError();
+    int result = MakeLink(to, lock, LINK_HARD) ? 0 : linkError(to);
     UnLock(lock);
     return result;
+}
+
+int link(const char* from, const char* to)
+{
+    return _link(from, to);
 }
 
 int symlink(const char* target, const char* name)
 {
     if (!MakeLink(name, (LONG)target, LINK_SOFT))
-        return fileError();
+        return linkError(name);
     return 0;
 }
 
-int utimes(const char* name, const struct timeval times[2])
+/* SDK utime.o bundles utimes. Route both public entry points here so the
+ * native UTC/local/DST conversion is used regardless of archive extraction. */
+int __wrap_utimes(const char* name, const struct timeval times[2])
 {
     struct timeval now;
     struct timezone zone;
@@ -326,4 +498,15 @@ int utimes(const char* name, const struct timeval times[2])
     if (!SetFileDate(name, &stamp))
         return fileError();
     return 0;
+}
+
+int __wrap_utime(const char* name, const struct utimbuf* times)
+{
+    if (!times)
+        return __wrap_utimes(name, NULL);
+    struct timeval values[2] = {
+        { times->actime, 0 },
+        { times->modtime, 0 }
+    };
+    return __wrap_utimes(name, values);
 }

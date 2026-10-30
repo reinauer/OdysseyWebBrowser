@@ -23,19 +23,6 @@ static int nativeFileError(void)
     return -1;
 }
 
-int isatty(int fd)
-{
-    BPTR handle = __check_fno(fd);
-    if (!handle) {
-        errno = EBADF;
-        return 0;
-    }
-    if (IsInteractive(handle))
-        return 1;
-    errno = ENOTTY;
-    return 0;
-}
-
 int ftruncate(int fd, off_t length)
 {
     BPTR handle = __check_fno(fd);

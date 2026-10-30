@@ -25,6 +25,8 @@ def main():
                         help="copy and mount a 512-byte FFS image as DH1 (32 sectors, 1 head, 2 reserved)")
     parser.add_argument("--stack", type=int, default=262144)
     parser.add_argument("--z3-memory", type=int, default=64)
+    parser.add_argument("--rtg-memory", type=int, default=0,
+                        help="enable a Zorro III RTG card (MiB) and load guest monitor drivers")
     parser.add_argument("--bsdsocket", action="store_true",
                         help="enable WinUAE's native socket-library emulation")
     parser.add_argument("--gdb-port", type=int, default=2345)
@@ -35,6 +37,10 @@ def main():
     args = parser.parse_args()
     if args.stack < 4096 or args.z3_memory not in (16, 32, 64, 128, 256, 512):
         parser.error("invalid guest stack size or Zorro III memory size")
+    if args.rtg_memory not in (0, 4, 8, 16, 32, 64):
+        parser.error("invalid RTG memory size")
+    if args.rtg_memory and not (args.system / "C/LoadMonDrvs").is_file():
+        parser.error("RTG test requires C/LoadMonDrvs in the guest fixture")
     if args.script and not args.script.is_file():
         parser.error("missing JavaScript input: " + str(args.script))
     if args.startup_delay < 0:
@@ -71,11 +77,12 @@ def main():
     delay = f"C:Wait {args.startup_delay} SEC\n" if args.startup_delay else ""
     if args.startup_delay and not (guest / "C/Wait").is_file():
         parser.error("startup delay requires C/Wait in the guest fixture")
+    monitor_setup = "C:LoadMonDrvs\n" if args.rtg_memory else ""
     startup.write_text(
         "C:Assign ENV: SYS:Prefs/Env-Archive\nFailAt 21\n"
         "C:MakeDir RAM:T RAM:ENV\nC:Assign T: RAM:T\n"
         "C:Assign ENV: RAM:ENV\nC:Assign MUI: SYS:\n"
-        "C:Assign LIBS: SYS:Classes ADD\n" + extra_assigns + delay + f"Stack {args.stack}\n"
+        "C:Assign LIBS: SYS:Classes ADD\n" + extra_assigns + monitor_setup + delay + f"Stack {args.stack}\n"
         f"SYS:odyssey-platform-test {arguments} >SYS:odyssey-result.txt\n"
         'Echo "RETURN=$RC" >>SYS:odyssey-result.txt\n'
         "Echo DONE >>SYS:odyssey-result.txt\n")
@@ -87,6 +94,8 @@ def main():
         data_path = root / "data.hdf"
         shutil.copy2(args.data_hdf, data_path)
         data_disk = f"hardfile2=rw,DH1:{data_path},32,1,2,512,-128,,\n"
+    rtg_config = (f"gfxcard_size={args.rtg_memory}\ngfxcard_type=ZorroIII\n"
+                  if args.rtg_memory else "")
     config.write_text(
         "config_description=Odyssey OS3 platform test\nuse_gui=no\n"
         f"kickstart_rom_file={args.rom.resolve()}\n"
@@ -97,7 +106,7 @@ def main():
         "gfx_width_windowed=640\ngfx_height_windowed=480\n"
         f"filesystem2=rw,DH0:System:{guest},0\n"
         f"uaehf0=dir,rw,DH0:System:{guest},0\n"
-        + data_disk +
+        + data_disk + rtg_config +
         f"debugging_features=gdbserver\ngdb_port={args.gdb_port}\n")
     inputs = {name: {"path": str(path.resolve()), "sha256": digest(path)}
               for name, path in (("binary", args.binary), ("rom", args.rom),

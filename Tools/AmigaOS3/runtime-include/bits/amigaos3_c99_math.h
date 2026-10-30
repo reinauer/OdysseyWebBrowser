@@ -14,6 +14,7 @@ using ::lround;
 using ::lroundf;
 using ::hypot;
 using ::hypotf;
+using ::nextafterf;
 using ::fmax;
 using ::fmaxf;
 using ::copysign;
@@ -29,8 +30,7 @@ inline float hypot(float __x, float __y) { return ::hypotf(__x, __y); }
 // Older newlib nextafter returns x for x == y, retaining the wrong sign
 // for opposite signed zeros. C99/C++ require returning y in this case.
 inline double nextafter(double __x, double __y) { return __x == __y ? __y : ::nextafter(__x, __y); }
-inline float nextafterf(float __x, float __y) { return __x == __y ? __y : ::nextafterf(__x, __y); }
-inline float nextafter(float __x, float __y) { return std::nextafterf(__x, __y); }
+inline float nextafter(float __x, float __y) { return __x == __y ? __y : ::nextafterf(__x, __y); }
 inline float fmax(float __x, float __y) { return ::fmaxf(__x, __y); }
 inline float copysign(float __x, float __y) { return ::copysignf(__x, __y); }
 inline float cbrt(float __x) { return ::cbrtf(__x); }

@@ -30,6 +30,13 @@ set(CMAKE_FIND_ROOT_PATH "${AMIGAOS3_TOOLCHAIN_ROOT}/m68k-amigaos")
 if (AMIGAOS3_DEPENDENCY_ROOT)
     list(PREPEND CMAKE_FIND_ROOT_PATH "${AMIGAOS3_DEPENDENCY_ROOT}")
 endif ()
+if (AMIGAOS3_RUNTIME_ROOT)
+    # pkg-config dependencies are resolved to absolute archives by CMake.
+    # A linker -L flag alone cannot keep them out of the SDK's pthread
+    # archive, which must not be mixed with the selected C++ runtime.
+    list(PREPEND CMAKE_FIND_ROOT_PATH "${AMIGAOS3_RUNTIME_ROOT}")
+    list(PREPEND CMAKE_PREFIX_PATH "${AMIGAOS3_RUNTIME_ROOT}")
+endif ()
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

@@ -26,6 +26,124 @@ def run(arguments, *, cwd=None, env=None, log=None):
         subprocess.run(arguments, cwd=cwd, env=env, check=True)
 
 
+
+def sdk_fingerprint(toolchain):
+    """Identify the actual compiler, startup, libraries and searched headers.
+
+    A release string alone is insufficient: SDK archives can be repackaged
+    without changing gcc --version. Resolve the SDK path once, but hash
+    relative identities so moving identical SDK bytes does not change it.
+    """
+    toolchain = toolchain.resolve()
+    cc = toolchain / "bin/m68k-amigaos-gcc"
+    cxx = toolchain / "bin/m68k-amigaos-g++"
+
+    def output(compiler, *arguments):
+        return subprocess.check_output([str(compiler), *arguments], text=True).strip()
+
+    def name(path):
+        path = path.resolve()
+        try:
+            return str(path.relative_to(toolchain))
+        except ValueError:
+            return str(path)
+
+    def checksum(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    files = {"gcc": cc, "g++": cxx}
+    for program in ("cc1", "cc1plus", "as", "ld"):
+        compiler = cxx if program == "cc1plus" else cc
+        reported = output(compiler, "-print-prog-name=" + program)
+        resolved = shutil.which(reported) if "/" not in reported else reported
+        if not resolved:
+            raise SystemExit("Compiler tool cannot be resolved through PATH: " + reported)
+        files[program] = Path(resolved)
+    for program in ("ar", "ranlib"):
+        files[program] = toolchain / ("bin/m68k-amigaos-" + program)
+    for library in ("newlib-crt0.o", "libc.a", "libm.a", "libstubs.a",
+                    "libpthread.a", "libgcc.a", "libstdc++.a", "libsupc++.a"):
+        files[library] = Path(output(cxx, "-m68020", "-print-file-name=" + library))
+    for label, path in files.items():
+        if not path.is_file():
+            raise SystemExit("SDK input cannot be located: " + label + " (" + str(path) + ")")
+
+    include_roots = []
+    for compiler, language in ((cc, "c"), (cxx, "c++")):
+        probe = subprocess.run([str(compiler), "-m68020", "-E", "-v", "-x", language, "-"],
+                               input="", text=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, check=True,
+                               env=dict(os.environ, LC_ALL="C"))
+        in_search = False
+        for line in probe.stderr.splitlines():
+            if line == "#include <...> search starts here:":
+                in_search = True
+            elif line == "End of search list.":
+                in_search = False
+            elif in_search:
+                path = Path(line.strip()).resolve()
+                if not path.is_dir():
+                    raise SystemExit("SDK include directory cannot be located: " + str(path))
+                if path not in include_roots:
+                    include_roots.append(path)
+    if not include_roots:
+        raise SystemExit("Compiler did not report its target include search paths")
+    headers = {}
+    for directory in include_roots:
+        digest = hashlib.sha256()
+        count = 0
+        for path in sorted(directory.rglob("*")):
+            if path.is_file():
+                digest.update(str(path.relative_to(directory)).encode() + b"\0")
+                digest.update(bytes.fromhex(checksum(path)))
+                count += 1
+        headers[name(directory)] = {"files": count, "sha256": digest.hexdigest()}
+    identity = {
+        "target": output(cc, "-dumpmachine"),
+        "compiler_version": output(cc, "--version").splitlines()[0],
+        "multilib": output(cc, "-m68020", "-print-multi-directory"),
+        "specs_sha256": hashlib.sha256(output(cc, "-dumpspecs").encode()).hexdigest(),
+        "files": {label: {"path": name(path), "sha256": checksum(path)}
+                  for label, path in sorted(files.items())},
+        "include_search_order": [name(path) for path in include_roots],
+        "include_trees": headers,
+    }
+    digest = hashlib.sha256(json.dumps(identity, sort_keys=True,
+                                      separators=(",", ":")).encode()).hexdigest()
+    return {"format": 1, "sha256": digest, "resolved_toolchain": str(toolchain),
+            "resolved_inputs": {label: str(path.resolve()) for label, path in sorted(files.items())},
+            "identity": identity}
+
+
+
+def pthread_archive_compatibility(fingerprint, profile="legacy"):
+    members = subprocess.check_output(
+        [fingerprint["resolved_inputs"]["ar"], "t",
+         fingerprint["resolved_inputs"]["libpthread.a"]], text=True).splitlines()
+    expected = ["pthread.o", "sched.o", "semaphore.o"]
+    if profile == "oct29":
+        expected = ["pthread_attr.o", "pthread_barrier.o", "pthread_cancel.o",
+                    "pthread_cond.o", "pthread_core.o", "pthread_key.o",
+                    "pthread_mutex.o", "pthread_once.o", "pthread_rwlock.o",
+                    "pthread_spin.o", "pthread_thread.o", "sched.o", "semaphore.o"]
+    return {"supported": sorted(members) == expected,
+            "actual_members": members, "expected_members": expected}
+
+
+def check_sdk_directory(directory, fingerprint):
+    marker = directory / "sdk-fingerprint.json"
+    if marker.exists():
+        recorded = json.loads(marker.read_text())
+        if recorded.get("format") != fingerprint["format"] or recorded.get("sha256") != fingerprint["sha256"] or recorded.get("runtime_profile") != fingerprint.get("runtime_profile"):
+            raise SystemExit("SDK fingerprint changed for " + str(directory)
+                             + ". Use fresh --build-dir and --prefix directories; "
+                             "existing runtime and native evidence were not changed.")
+    elif directory.exists() and any(directory.iterdir()):
+        raise SystemExit("Existing directory has no SDK fingerprint: " + str(directory)
+                         + ". Use fresh --build-dir and --prefix directories; "
+                         "do not relabel old outputs as validated for this SDK.")
+
+
 def install_c99_math(prefix):
     """Expose only C99 overloads backed by this SDK's actual libm ABI."""
     header = Path(__file__).resolve().parent / "runtime-include/bits/amigaos3_c99_math.h"
@@ -44,21 +162,58 @@ def install_c99_math(prefix):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=("legacy", "oct29"), default="legacy",
+                        help="select the separately pinned monolithic or Oct29 split pthread recipe")
     parser.add_argument("--gcc-source", type=Path,
                         default=Path.home() / "git/AmigaPorts/gcc")
     parser.add_argument("--gcc-revision",
-                        default="e141137a28e4c36e45c8dc9064f413ddb17099bd")
+                        default=None)
     parser.add_argument("--pthread-source", type=Path,
                         default=Path.home() / "old/git/m68k-amigaos-gcc/projects/aros-stuff")
     parser.add_argument("--pthread-revision",
-                        default="86711c70569ffc6b70ee1fb99895866c1d9f30e4")
+                        default=None)
     parser.add_argument("--toolchain", type=Path, default=Path("/opt/amiga-16.2"))
     parser.add_argument("--build-dir", type=Path, default=Path("build/amigaos3-gthreads"))
     parser.add_argument("--prefix", type=Path, default=Path("build/amigaos3-sdk/cxx-runtime"))
     parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--print-sdk-fingerprint", action="store_true",
+                        help="print current SDK content identity without building or changing files")
+    parser.add_argument("--sdk-fingerprint",
+                        help="require this SHA256 SDK identity, including on a fresh build")
     args = parser.parse_args()
+    args.gcc_revision = args.gcc_revision or ("1e6714c8f3756fc92ec93d4a3a25a49333b5407b" if args.profile == "oct29" else "e141137a28e4c36e45c8dc9064f413ddb17099bd")
+    args.pthread_revision = args.pthread_revision or ("bf81f53fe4a3f309d8ebabaa893a1c740c39b3de" if args.profile == "oct29" else "86711c70569ffc6b70ee1fb99895866c1d9f30e4")
+    toolchain = args.toolchain.resolve()
+    fingerprint = sdk_fingerprint(toolchain)
+    fingerprint["requested_toolchain"] = str(args.toolchain.absolute())
+    fingerprint["runtime_profile"] = args.profile
+    compatibility = pthread_archive_compatibility(fingerprint, args.profile)
+    fingerprint["pthread_recipe_compatibility"] = compatibility
+    if args.print_sdk_fingerprint:
+        print(json.dumps(fingerprint, indent=2))
+        return
+    if args.sdk_fingerprint and args.sdk_fingerprint != fingerprint["sha256"]:
+        raise SystemExit("Selected SDK does not match --sdk-fingerprint: " + fingerprint["sha256"])
+    if not compatibility["supported"]:
+        raise SystemExit("Unsupported SDK pthread archive composition: "
+                         + ", ".join(compatibility["actual_members"])
+                         + ". Profile " + args.profile + " requires "
+                         + ", ".join(compatibility["expected_members"])
+                         + ". No build/prefix files were changed.")
+    if args.profile == "oct29" and fingerprint["sha256"] != "047486a65ed6ae2711feedbd12187671e03edafe88d3e1c2963396b4f2f38823":
+        raise SystemExit("The Oct29 profile requires its pinned SDK content identity; inspect a new SDK before adding another profile")
     root = args.build_dir.resolve()
     prefix = args.prefix.resolve()
+    # Check both before creating markers or modifying either tree.
+    for directory in (root, prefix):
+        check_sdk_directory(directory, fingerprint)
+    for directory in (root, prefix):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "sdk-fingerprint.json").write_text(json.dumps(fingerprint, indent=2) + "\n")
+    cc = str(toolchain / "bin/m68k-amigaos-gcc")
+    cxx = str(toolchain / "bin/m68k-amigaos-g++")
+    ar = str(toolchain / "bin/m68k-amigaos-ar")
+    ranlib = str(toolchain / "bin/m68k-amigaos-ranlib")
     source = root / "source"
     build = root / "libstdcxx"
     libgcc = root / "libgcc"
@@ -85,11 +240,6 @@ def main():
             raise SystemExit("GCC source extraction failed")
         marker.write_text(revision + "\n")
 
-    toolchain = args.toolchain.resolve()
-    cc = str(toolchain / "bin/m68k-amigaos-gcc")
-    cxx = str(toolchain / "bin/m68k-amigaos-g++")
-    ar = str(toolchain / "bin/m68k-amigaos-ar")
-    ranlib = str(toolchain / "bin/m68k-amigaos-ranlib")
     pthread_source = root / "pthread-source"
     pthread_source.mkdir(parents=True, exist_ok=True)
     pthread_git = ["git", "-C", str(args.pthread_source.resolve())]
@@ -101,7 +251,7 @@ def main():
         contents.extractall(pthread_source, filter="data")
     if archive.wait():
         raise SystemExit("pthread source extraction failed")
-    pthread_patch = Path(__file__).resolve().parent / "patches/pthread-stable-records.patch"
+    pthread_patch = Path(__file__).resolve().parent / ("patches/pthread-oct29-tls.patch" if args.profile == "oct29" else "patches/pthread-stable-records.patch")
     run(["patch", "-p1", "-i", str(pthread_patch)], cwd=pthread_source,
         log=root / "pthread-patch.log")
     # This source has the installed SDK's public ABI. Keep the other SDK
@@ -109,11 +259,30 @@ def main():
     if (pthread_source / "pthreads/pthread.h").read_bytes() != (
             toolchain / "m68k-amigaos/include/pthread.h").read_bytes():
         raise SystemExit("Pinned pthread header differs from the selected SDK ABI")
-    run([cc, "-m68020", "-O2", "-I" + str(pthread_source / "pthreads"),
-         "-c", str(pthread_source / "pthreads/pthread.c"), "-o", str(root / "pthread.o")])
-    sdk_pthread = toolchain / "m68k-amigaos/lib/libm020/libpthread.a"
+    pthread_members = ["pthread_key", "pthread_cond"] if args.profile == "oct29" else ["pthread"]
+    pthread_flags = (["-m68020-60", "-Os", "-fomit-frame-pointer", "-noixemul"]
+                     if args.profile == "oct29" else ["-m68020", "-O2"])
+    pthread_objects = []
+    for member in pthread_members:
+        object_path = root / (member + ".o")
+        run([cc, *pthread_flags, "-I" + str(pthread_source / "pthreads"),
+             "-c", str(pthread_source / "pthreads" / (member + ".c")),
+             "-o", str(object_path)])
+        pthread_objects.append(str(object_path))
+    sdk_pthread = Path(fingerprint["resolved_inputs"]["libpthread.a"])
     shutil.copy2(sdk_pthread, prefix / "lib/libpthread.a")
-    run([ar, "r", str(prefix / "lib/libpthread.a"), str(root / "pthread.o")])
+    run([ar, "r", str(prefix / "lib/libpthread.a"), *pthread_objects])
+    # Every unmodified SDK member must be byte-identical, with no duplicate
+    # or legacy implementation accidentally added to the split archive.
+    installed_members = subprocess.check_output([ar, "t", str(prefix / "lib/libpthread.a")], text=True).splitlines()
+    if installed_members != compatibility["actual_members"]:
+        raise SystemExit("Repaired pthread archive changed member composition")
+    for member in installed_members:
+        if member not in [name + ".o" for name in pthread_members]:
+            before = subprocess.check_output([ar, "p", str(sdk_pthread), member])
+            after = subprocess.check_output([ar, "p", str(prefix / "lib/libpthread.a"), member])
+            if before != after:
+                raise SystemExit("Unrelated pthread archive member changed: " + member)
     run([ranlib, str(prefix / "lib/libpthread.a")])
     shutil.copy2(source / "libgcc/gthr-posix.h", libgcc / "gthr-default.h")
 
@@ -166,6 +335,9 @@ def main():
         [environment["NM"], "-u", str(build / "src/c++11/chrono.o")], text=True)
     if "_clock_gettime" not in chrono_symbols:
         raise SystemExit("libstdc++ chrono object does not use the native clock")
+    if sdk_fingerprint(toolchain)["sha256"] != fingerprint["sha256"]:
+        raise SystemExit("SDK contents changed during the build; stopping before libstdc++ install. "
+                         "Partial artifacts were retained; use fresh build/prefix directories.")
     run(["make", "install"], cwd=build, env=environment, log=root / "install.log")
     install_c99_math(prefix)
 
@@ -182,9 +354,9 @@ def main():
     run([ar, "r", str(prefix / "lib/libgcc.a"), str(libgcc / "emutls.o")])
     run([ranlib, str(prefix / "lib/libgcc.a")])
     shutil.copy2(libgcc / "emutls.o", prefix / "lib/emutls.o")
-    # The SDK libc overrides GCC's unsigned floating-point helpers with Amiga
-    # math-library wrapper that adds 2^27 instead of 2^31 for high-bit inputs.
-    # Link the pinned GCC implementation as an object before libc.
+    # The Oct14 SDK unsigned-to-double helper adds 2^27 instead of 2^31;
+    # Oct29 fixes that typo. Both profiles retain canonical GCC helpers for
+    # consistent tested conversion semantics, as explicit objects before libc.
     # Its double-to-float wrapper also truncates through IEEEDPTieee instead
     # of using GCC's round-to-nearest-even conversion.
     for helper in ("floatunsidf", "floatunsisf", "truncdfsf2"):
@@ -200,6 +372,24 @@ def main():
     run([cc, "-m68020", *["-DL_" + section for section in double_sections], "-c",
          str(source / "libgcc/config/m68k/lb1sf68.S"),
          "-o", str(prefix / "lib/double-math.o")])
+    integer_sections = ("divsi3", "modsi3", "udivsi3", "umodsi3", "mulsi3")
+    # Integer sections reuse local labels when assembled together. Compile
+    # them separately, then retain one explicit relocatable object for linking.
+    integer_objects = []
+    for section in integer_sections:
+        object_path = libgcc / (section + ".o")
+        run([cc, "-m68020", "-DL_" + section, "-c",
+             str(source / "libgcc/config/m68k/lb1sf68.S"), "-o", str(object_path)])
+        integer_objects.append(str(object_path))
+    # mktime uses public div(), whose SDK archive member also defines the
+    # compiler helpers and ldiv. Supply the C entry point separately to keep
+    # that conflicting alias bundle out of otherwise fully resolved links.
+    integer_div = Path(__file__).resolve().parent / "integer-div.c"
+    integer_div_object = libgcc / "integer-div.o"
+    run([cc, "-m68020", "-O2", "-fno-builtin-div", "-c", str(integer_div),
+         "-o", str(integer_div_object)])
+    integer_objects.append(str(integer_div_object))
+    run([environment["LD"], "-r", *integer_objects, "-o", str(prefix / "lib/integer-math.o")])
     shutil.copy2(sdk_include / "fenv.h", prefix / "include/fenv.h")
     for header in runtime_headers.glob("*.h"):
         shutil.copy2(header, prefix / "include" / header.name)
@@ -209,9 +399,17 @@ def main():
         shutil.copy2(source / name, license_directory / name)
     pthread_distribution = prefix / "share/amiga-pthread"
     pthread_distribution.mkdir(parents=True, exist_ok=True)
-    for name in ("pthread.c", "pthread.h"):
+    for name in (("pthread_key.c", "pthread_cond.c", "pthread_intern.h", "pthread.h", "debug.h", "Makefile.gcc6") if args.profile == "oct29" else ("pthread.c", "pthread.h")):
         shutil.copy2(pthread_source / "pthreads" / name, pthread_distribution / name)
+    if sdk_fingerprint(toolchain)["sha256"] != fingerprint["sha256"]:
+        raise SystemExit("SDK contents changed while installing; no new completion manifest written. "
+                         "Partial artifacts were retained; use fresh build/prefix directories.")
     (prefix / "manifest.json").write_text(json.dumps({
+        "sdk_fingerprint": fingerprint,
+        "native_validation": "Not run by this builder. Prior probe evidence applies only to its recorded binary hashes.",
+        "runtime_profile": args.profile,
+        "pthread_rebuilt_members": [member + ".o" for member in pthread_members],
+        "pthread_compile_flags": pthread_flags,
         "gcc_revision": revision,
         "gcc_repository": "https://github.com/AmigaPorts/gcc",
         "pthread_revision": pthread_revision,
@@ -219,7 +417,7 @@ def main():
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
         "cpu": "68020", "thread_model": "posix", "shared_ptr_lock_policy": "atomic",
         "libgcc_rebuilt_members": ["emutls.o"],
-        "compiler_helper_objects": ["floatunsidf.o", "floatunsisf.o", "truncdfsf2.o", "double-math.o"],
+        "compiler_helper_objects": ["floatunsidf.o", "floatunsisf.o", "truncdfsf2.o", "double-math.o", "integer-math.o"],
         "required_platform_sources": ["Source/WTF/wtf/amigaos3/Time.c", "Source/WTF/wtf/amigaos3/Malloc.c"],
         "cxx_include_directories": [str(prefix / "include/c++/m68k-amigaos"), str(prefix / "include/c++")],
         "library_directory": str(prefix / "lib"),
@@ -237,10 +435,12 @@ def main():
             "lib/floatunsisf.o": prefix / "lib/floatunsisf.o",
             "lib/truncdfsf2.o": prefix / "lib/truncdfsf2.o",
             "lib/double-math.o": prefix / "lib/double-math.o",
+            "lib/integer-math.o": prefix / "lib/integer-math.o",
+            "integer-div.c": integer_div,
             "libgcc/config/m68k/lb1sf68.S": source / "libgcc/config/m68k/lb1sf68.S",
             "libgcc/config/m68k/fpgnulib.c": source / "libgcc/config/m68k/fpgnulib.c",
             "lib/libpthread.a": prefix / "lib/libpthread.a",
-            "pthread.c": pthread_source / "pthreads/pthread.c",
+            **{member + ".c": pthread_source / "pthreads" / (member + ".c") for member in pthread_members},
             "pthread_patch": pthread_patch,
             "sdk/libpthread.a": sdk_pthread,
         }.items()},

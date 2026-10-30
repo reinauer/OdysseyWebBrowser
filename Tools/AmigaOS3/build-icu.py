@@ -168,15 +168,20 @@ def main():
     run([env['CC'], '-m68020', '-O2', '-c',
          ROOT / 'Source/WTF/wtf/amigaos3/Malloc.c', '-o', 'amiga-malloc.o'],
         target, logs / 'probe-malloc.log', env)
+    run([env['CC'], '-m68020', '-O2', '-c',
+         ROOT / 'Source/WTF/wtf/amigaos3/TTY.c', '-o', 'amiga-tty.o'],
+        target, logs / 'probe-tty.log', env)
     math_helpers = ('floatunsidf.o', 'floatunsisf.o', 'truncdfsf2.o', 'double-math.o')
+    if runtime and (runtime / 'lib/integer-math.o').exists():
+        math_helpers += ('integer-math.o',)
     runtime_libraries = ([str(runtime / 'lib' / name) for name in math_helpers]
         + ['-L' + str(runtime / 'lib')]) if runtime else []
     run([env['CXX'], '-m68020', '-O2', '-std=c++11'] + runtime_flags +
         ['-I' + str(prefix / 'include'),
-         ROOT / 'Tools/AmigaOS3/icu-test.cpp', 'amiga-time.o', 'amiga-malloc.o'] +
+         ROOT / 'Tools/AmigaOS3/icu-test.cpp', 'amiga-time.o', 'amiga-malloc.o', 'amiga-tty.o'] +
         runtime_libraries + ['-L' + str(prefix / 'lib'), '-licui18n', '-licuuc', '-licudata',
          '-lstdc++', '-lpthread', '-latomic',
-         '-Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r',
+         '-Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r,--wrap=isatty',
          '-o', 'icu-test'], target, logs / 'probe-link.log', env)
     manifest = {'version': VERSION, 'source_url': URL, 'source_sha256': SHA256,
                 'patch_sha256': patch_hash, 'cpu': '68020', 'data_endianness': 'big',
@@ -184,6 +189,7 @@ def main():
                 'cxx_runtime': str(runtime) if runtime else None,
                 'time_source_sha256': sha(ROOT / 'Source/WTF/wtf/amigaos3/Time.c'),
                 'malloc_source_sha256': sha(ROOT / 'Source/WTF/wtf/amigaos3/Malloc.c'),
+                'tty_source_sha256': sha(ROOT / 'Source/WTF/wtf/amigaos3/TTY.c'),
                 'compiler': subprocess.check_output([env['CC'], '--version'], text=True).splitlines()[0],
                 'libraries': {name: sha(prefix / 'lib' / name) for name in libraries},
                 'probe_sha256': sha(target / 'icu-test')}

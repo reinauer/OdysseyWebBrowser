@@ -1,10 +1,86 @@
 # AmigaOS3 C++ runtime and thread snapshots
 
-The `/opt/amiga-16.2` compiler can generate the port, but its installed GCC
-runtime was configured with `--enable-threads=no`. Its emulated compiler TLS
+The original `/opt/amiga-16.2` SDK snapshot could generate the port, but its
+installed GCC runtime was configured with `--enable-threads=no`. Its emulated compiler TLS
 shares values across pthreads; its libstdc++ also selects unsynchronized
 shared ownership and static initialization. The SDK provides real pthreads,
 so the port builds a matching C++ runtime overlay in the workspace.
+
+## SDK identity and rebuilding
+
+Runtime evidence below belongs to the original SDK snapshot and the exact
+recorded binaries. The `/opt/amiga-16.2` symlink now resolves to the newer
+20261029 SDK; the same path or GCC release number does not establish that
+its libraries and headers match the earlier build. See [UPSTREAM.md](UPSTREAM.md)
+for the newer SDK audit. Existing manifests and native results are retained
+as historical evidence, not rewritten to describe a different installation.
+
+Inspect the currently selected SDK without building or changing files:
+
+```sh
+python3 Tools/AmigaOS3/build-cxx-runtime.py --print-sdk-fingerprint
+```
+
+The report records both the requested and resolved SDK paths, resolved
+compiler/tool paths, and a SHA256 identity over compiler executables,
+binutils, specs, selected 68020 startup/libraries, and all target C/C++
+header search trees. `--sdk-fingerprint SHA256` can require that exact
+identity on a fresh build. Each successful profile records the identity
+in `sdk-fingerprint.json` in its build and installation directories and
+in the completion manifest. The SDK is checked again before libstdc++
+installation and before writing the final manifest.
+
+Existing directories with a different identity, or legacy directories
+without one, are rejected before mutation. Use new `--build-dir` and
+`--prefix` paths; do not delete or relabel the older overlay/evidence.
+Rebuilding does not count as native validation: rerun the native runtime,
+thread/GC, math and JSC probes against the new profile and preserve their
+new binary hashes and outputs.
+
+Two profiles are explicitly selected; their SDK archive compositions cannot
+be interchanged. `--profile legacy` retains the original monolithic pthread
+repair. `--profile oct29` requires SDK content identity
+`047486a65ed6ae2711feedbd12187671e03edafe88d3e1c2963396b4f2f38823`,
+pins GCC `1e6714c8f3756fc92ec93d4a3a25a49333b5407b` and aros-stuff
+`bf81f53fe4a3f309d8ebabaa893a1c740c39b3de`, and replaces
+`pthread_key.o` and `pthread_cond.o` in the SDK's split archive. The patch clears newly allocated
+TLS slots and takes the semaphore before validating/looking up relocatable
+slots. The condition patch normalizes the signed seconds/microseconds
+difference explicitly (the NDK timeval fields are unsigned) and converts
+expired deadlines to a minimal timer wait through the ordinary mutex
+unlock/relock path. Invalid nanoseconds are rejected before waiting. The
+existing stable thread records and joining implementation remain
+upstream's. All other archive members are verified byte-for-byte unchanged.
+The replacement uses upstream's selected multilib flags (`-m68020-60 -Os
+-fomit-frame-pointer -noixemul`) and pinned private/public headers.
+
+Build the new profile in separate directories, with repositories containing
+those revisions (the builder never updates external repositories itself):
+
+```sh
+python3 Tools/AmigaOS3/build-cxx-runtime.py --profile oct29 \
+    --gcc-source build/amigaos3-source-repos/gcc \
+    --pthread-source build/amigaos3-source-repos/aros-stuff \
+    --build-dir build/amigaos3-gthreads-oct29 \
+    --prefix build/amigaos3-sdk/cxx-runtime-oct29
+```
+
+The original overlay stays at `build/amigaos3-sdk/cxx-runtime`. A completed
+new-profile manifest establishes build identity, not a native pass. The
+runtime, TLS-growth, condition deadlines, thread/GC, math, ICU and JSC matrix must pass before
+switching the browser. New dependencies must be rebuilt with the same SDK:
+newlib's `_reent` layout changed between the two installations.
+
+The matched Oct29 candidate now passes the platform/GC and timeout tests
+(`build/amigaos3-platform-oct29-fixed/output.txt`), math suite
+(`build/amigaos3-math-oct29-final/output.txt`), and ICU's six checks including
+concurrent collators/formatters (`build/amigaos3-icu-oct29/native/output.txt`).
+The final C++ runtime relink also passes TLS, static guards, nested once,
+ownership, allocator contention, integer helpers/div/ldiv boundaries and all
+63 available TLS key slots (`build/amigaos3-runtime-oct29-final/output.txt`).
+`native-validation.json` beside the new manifest records that manifest hash
+and the exact guest binary/output hashes. Full JSC and browser validation
+remain separate requirements.
 
 ## Build the overlay
 
@@ -61,7 +137,7 @@ The runtime selects those clocks explicitly. The recipe cleans previous
 objects when regenerating configuration because libstdc++ does not track
 all generated-header dependencies.
 
-The SDK libc also overrides GCC's unsigned-to-double and unsigned-to-float
+The original SDK libc also overrides GCC's unsigned-to-double and unsigned-to-float
 helpers with wrappers that add `0x8000000` where `0x80000000` is required.
 Native conversion of `0x80000000` consequently produced `134217728`.
 Its double-to-float wrapper also truncates through `IEEEDPTieee`, producing
@@ -70,9 +146,17 @@ the three correct conversion helpers from the pinned GCC
 `libgcc/config/m68k/fpgnulib.c`. The central CMake runtime module links these
 objects before libc. External native executable links must likewise include
 `lib/floatunsidf.o`, `lib/floatunsisf.o`, `lib/truncdfsf2.o` and
-`lib/double-math.o` before libraries; `-L` alone does
+`lib/double-math.o` and the new `lib/integer-math.o` before libraries; `-L` alone does
 not override libc's definitions. Runtime and math probes use volatile inputs
 to test both conversions across the signed boundary and at `UINT_MAX`.
+
+The new integer object combines separately assembled GCC signed/unsigned
+32-bit divide, remainder and multiplication helpers. Oct29 libc's bundled
+`__divsi3` object also exports `ldiv`, conflicting with its separate C `ldiv`
+implementation when both are needed. Resolving compiler helpers first avoids
+that competing alias bundle. `RuntimeTest.cpp` checks C `div`/`ldiv` against
+the helpers, signed remainder rules and quotient/remainder identities at
+integer boundaries; division by zero and INT_MIN/-1 are intentionally absent.
 
 The fourth object contains GCC's software double arithmetic and matching
 comparison predicates from the same pinned `libgcc/config/m68k/lb1sf68.S`.
@@ -104,6 +188,10 @@ behavior is exercised by the native probe.
 
 The nextafter adapter also corrects old newlib's equal-argument case by
 returning the destination, including its sign for opposite signed zeros.
+The suffixed C spelling `nextafterf` is imported as the same global function
+to avoid ambiguous calls under `using namespace std`; direct calls to that
+SDK C function retain its signed-zero limitation. The corrected generic
+`std::nextafter(float, float)` overload is used by the C++ regression probe.
 Other calculations call actual libm functions; double arithmetic is repaired
 at the compiler-helper level rather than hidden in individual math calls.
 
@@ -227,3 +315,30 @@ across 32 explicit collections, in
 rather than treating a successful compilation as a runtime pass. This
 establishes a native engine smoke test, not complete GC, browser, or
 physical-hardware correctness.
+
+
+## Current SDK compatibility probe
+
+A separate build in `build/amigaos3-oct29-runtime` uses the explicit
+`/opt/amiga-16.2-20261029` compiler/libc/libm with the existing Oct14-based
+staged overlay. Both `odyssey-runtime-test` and `odyssey-math-test` passed
+natively with all repairs retained; outputs are `native-runtime-2/output.txt`
+and `native-math/output.txt`. The latter has 28 arithmetic/overload/concurrency
+checks. `probe-manifest.json` records SDK library and executable hashes.
+This is a mixed-SDK component compatibility result, not validation of the
+unmodified Oct29 runtime or authorization to remove old workarounds.
+
+The standalone math target is available with:
+
+```sh
+cmake -S Tools/AmigaOS3 -B build/amigaos3-oct29-runtime -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
+  -DAMIGAOS3_TOOLCHAIN_ROOT=/opt/amiga-16.2-20261029 \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime"
+cmake --build build/amigaos3-oct29-runtime \
+  --target odyssey-runtime-test odyssey-math-test -j3
+```
+
+Use runner success markers `C++ runtime: 0 failures` and
+`math test: 0 failures`, respectively. See `UPSTREAM.md` for which older SDK
+issues have already changed upstream and the recommended matched-SDK rebuild.

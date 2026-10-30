@@ -86,6 +86,8 @@ def main():
     p.add_argument('--sqlite-smoke', action='store_true', help='Link the native SQLite transaction smoke')
     p.add_argument('--sqlite-volume', default='RAM:', help='Guest volume for the SQLite smoke (RAM: or DH1:)')
     p.add_argument('--psl-smoke', action='store_true', help='Link the native public-suffix smoke')
+    p.add_argument('--file-smoke', action='store_true', help='Link the native filesystem metadata smoke')
+    p.add_argument('--file-volume', default='RAM:', help='Guest volume for the filesystem smoke (RAM: or DH1:)')
     p.add_argument('packages', nargs='*', choices=list(PACKAGES))
     a = p.parse_args()
     build, prefix, toolchain = a.build_root.resolve(), a.prefix.resolve(), a.toolchain.resolve()
@@ -104,7 +106,9 @@ def main():
     runtime_link_flags = []
     helper_objects = [runtime/'lib'/name for name in
         ('floatunsidf.o', 'floatunsisf.o', 'truncdfsf2.o', 'double-math.o')]
-    requested_probes = a.smoke or a.font_smoke or a.sqlite_smoke or a.psl_smoke
+    if (runtime/'lib/integer-math.o').exists():
+        helper_objects.append(runtime/'lib/integer-math.o')
+    requested_probes = a.smoke or a.font_smoke or a.sqlite_smoke or a.psl_smoke or a.file_smoke
     if a.probes_only and (not requested_probes or a.packages):
         raise RuntimeError('--probes-only requires probe flags and no package names')
     if requested_probes and any(not path.exists() for path in helper_objects):
@@ -148,7 +152,8 @@ def main():
         run([env['AR'], 'rcs', str(prefix/'lib/libodyssey-amigaos3.a'), str(build/'Time.o'), str(build/'dirent.o'), str(build/'files.o'), str(build/'Random.o'), str(build/'inet_pton.o'), str(build/'curl-files.o')], build, 'native-support')
         (prefix/'share/licenses/musl').mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT/'Tools/AmigaOS3/dependencies/MUSL-COPYRIGHT',prefix/'share/licenses/musl/COPYRIGHT')
-    env['LIBS'] = '-latomic -lpthread -lodyssey-amigaos3'
+    support_wrappers = '-Wl,--wrap=getcwd,--wrap=utimes,--wrap=utime'
+    env['LIBS'] = '-latomic -lpthread -lodyssey-amigaos3 ' + support_wrappers
     base_env = env.copy()
 
     for name in ([] if a.probes_only else (a.packages or list(PACKAGES))):
@@ -309,15 +314,25 @@ def main():
                     content += '\nLibs.private: '+support+'\n'
                 pc.write_text(content)
         (build/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    # Current newlib bundles these public names with unrelated ABI helpers.
+    # Wrap the native implementations instead of exporting duplicate symbols.
+    if not a.probes_only:
+        for pc in (prefix/'lib/pkgconfig').glob('*.pc'):
+            content = pc.read_text()
+            if '-lodyssey-amigaos3' in content and support_wrappers not in content:
+                pc.write_text(content.replace('-lodyssey-amigaos3', '-lodyssey-amigaos3 ' + support_wrappers))
     print(f'Staged libraries in {prefix}',flush=True)
     probe_link_flags = runtime_link_flags + [str(path) for path in helper_objects]
     if requested_probes:
-        malloc_source = ROOT/'Source/WTF/wtf/amigaos3/Malloc.c'
-        run([env['CC'], '-m68020', '-O2', '-I'+str(runtime/'include'), '-c', str(malloc_source),
-             '-o', str(build/'probe-Malloc.o')], build, 'native-probe-malloc')
-        probe_link_flags += [str(build/'probe-Malloc.o'),
-            '-Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r']
-        manifest['support_sources'][str(malloc_source.relative_to(ROOT))] = sha(malloc_source)
+        for unit in ('Malloc', 'TTY'):
+            source = ROOT/'Source/WTF/wtf/amigaos3'/f'{unit}.c'
+            run([env['CC'], '-m68020', '-O2', '-I'+str(runtime/'include'), '-c', str(source),
+                 '-o', str(build/f'probe-{unit}.o')], build, f'native-probe-{unit.lower()}')
+            probe_link_flags.append(str(build/f'probe-{unit}.o'))
+            manifest['support_sources'][str(source.relative_to(ROOT))] = sha(source)
+        probe_link_flags.append(
+            '-Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r,--wrap=isatty')
+        probe_link_flags.append(support_wrappers)
     if a.smoke:
         flags = subprocess.check_output(['pkg-config','--static','--cflags','--libs','cairo','libxslt'],env=env,text=True).split()
         run([env['CC'],'-m68020','-O2',str(ROOT/'Tools/AmigaOS3/dependencies/smoke.c'),'-o',str(build/'dependency-smoke')]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3'],build,'dependency-smoke-link')
@@ -343,9 +358,16 @@ def main():
             flags = subprocess.check_output(['pkg-config','--static','--cflags','--libs',package],env=env,text=True).split()
             run([env['CC'],'-m68020','-O2']+extra+[str(ROOT/f'Tools/AmigaOS3/dependencies/{source}.c'),'-o',str(build/source)]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3','-lstdc++','-lm'],build,source+'-link')
 
+    if a.file_smoke:
+        run([env['CC'], '-m68020', '-O2', f'-DFILE_SMOKE_VOLUME="{a.file_volume}"',
+             str(ROOT/'Tools/AmigaOS3/dependencies/file-smoke.c'), '-o', str(build/'file-smoke')]
+            + probe_link_flags + ['-L'+str(prefix/'lib'), '-lodyssey-amigaos3', '-latomic', '-lpthread'],
+            build, 'file-smoke-link')
+
     manifest['probes'] = {name: sha(build/name) for enabled, name in [
         (a.smoke, 'dependency-smoke'), (a.font_smoke, 'font-smoke'),
-        (a.sqlite_smoke, 'sqlite-smoke'), (a.psl_smoke, 'psl-smoke')] if enabled}
+        (a.sqlite_smoke, 'sqlite-smoke'), (a.psl_smoke, 'psl-smoke'),
+        (a.file_smoke, 'file-smoke')] if enabled}
     (build/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 
 

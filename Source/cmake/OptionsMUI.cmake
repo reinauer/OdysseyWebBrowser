@@ -150,7 +150,8 @@ if (AmigaOS3)
     find_library(AMIGAOS3_NATIVE_SUPPORT_LIBRARY odyssey-amigaos3 REQUIRED)
     add_library(AmigaOS3::Support UNKNOWN IMPORTED)
     set_target_properties(AmigaOS3::Support PROPERTIES
-        IMPORTED_LOCATION "${AMIGAOS3_NATIVE_SUPPORT_LIBRARY}")
+        IMPORTED_LOCATION "${AMIGAOS3_NATIVE_SUPPORT_LIBRARY}"
+        INTERFACE_LINK_OPTIONS "-Wl,--wrap=getcwd,--wrap=utimes,--wrap=utime")
     find_package(ICU 61.2 REQUIRED COMPONENTS data i18n uc)
     if (AMIGAOS3_JSC_ONLY)
         return()
