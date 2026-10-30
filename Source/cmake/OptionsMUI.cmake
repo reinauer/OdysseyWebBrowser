@@ -114,6 +114,27 @@ add_definitions(-DUSER_AGENT_GTK_MINOR_VERSION=1)
 
 # FIXME: These need to be configurable.
 
+if (AmigaOS3)
+    # Resolve real target dependencies; do not fabricate AROS SDK paths or
+    # accept libraries from the build host during the OS3 bring-up.
+    find_package(ICU 61.2 REQUIRED COMPONENTS data i18n uc)
+    find_package(SQLite3 REQUIRED)
+    find_package(LibPSL REQUIRED)
+    find_package(HarfBuzz REQUIRED COMPONENTS ICU)
+    find_package(WebP REQUIRED COMPONENTS demux)
+    find_package(LibXml2 REQUIRED)
+    find_package(LibXslt REQUIRED)
+    find_package(ZLIB REQUIRED)
+    find_package(Cairo REQUIRED)
+    find_package(CURL REQUIRED)
+    find_package(OpenSSL REQUIRED)
+    find_package(JPEG REQUIRED)
+    find_package(PNG REQUIRED)
+    find_package(Fontconfig REQUIRED)
+    find_package(Freetype REQUIRED)
+    return()
+endif ()
+
 set(ICU_INCLUDE_DIRS ${AROS_SDK_DIR}/include/)
 set(ICU_DATA_LIBRARY ${AROS_SDK_DIR}/lib/libicudata.a)
 add_library(ICU::data UNKNOWN IMPORTED)
