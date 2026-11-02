@@ -257,8 +257,12 @@ of visits, the time each page stays open and the time allowed for each page.
 `--fast-memory` select a real configuration. `--stall-timeout` ends a run with
 no browser requests, and such a failure leaves `failure.png`. `--uae-option`
 adds or replaces an emulator setting and may be repeated; timed runs need the
-cycle-exact settings. `result.json` then has a `memory` section, including the
-deepest stack use seen.
+cycle-exact settings. `--setup-command` runs a guest command after the assigns
+and may be repeated. `--browser-stack BYTES` sets the Shell stack OWB is launched
+from, which tests the browser's own stack selection. `--mui-package DIRECTORY`
+installs a MUI directory as `MUI:` and removes the fixture's own classes; genuine
+MUI classes mixed into the Zune68 ones failed to create `Title.mui`.
+`result.json` then has a `memory` section, including the deepest stack use seen.
 
 Optional `--gdb` takes `screen.png` through the emulator's GDB monitor after
 the checks. Inspect that image separately: a successful screenshot command

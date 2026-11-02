@@ -391,21 +391,30 @@ def stage(args):
     if args.binary:
         native_hunk(args.binary)
         shutil.copy2(args.binary, browser/'OWB')
-    native_hunk(args.mui_library)
-    shutil.copy2(args.mui_library, guest/'Libs/muimaster.library')
-    if args.zune_library:
-        native_hunk(args.zune_library)
-        shutil.copy2(args.zune_library, guest/'Libs/zunemaster.library')
-    if args.mui_classes:
-        for path in args.mui_classes.iterdir():
-            if path.is_file() and path.suffix.lower() in ('.mcc', '.mcp', '.mui'):
-                native_hunk(path)
-                shutil.copy2(path, guest/'Libs/MUI'/path.name)
-    if args.calltips:
-        native_hunk(args.calltips)
-        shutil.copy2(args.calltips, guest/'Libs/MUI/Calltips.mcc')
+    if args.mui_package:
+        # As installed: MUI: holds the package, and no other classes remain to be mixed in.
+        shutil.rmtree(guest/'Libs/MUI')
+        (guest/'Libs/muimaster.library').unlink(missing_ok=True)
+        (guest/'Libs/zunemaster.library').unlink(missing_ok=True)
+        copy_tree(args.mui_package, guest/'MUI')
+        classes = guest/'MUI/Libs/mui'
+    else:
+        native_hunk(args.mui_library)
+        shutil.copy2(args.mui_library, guest/'Libs/muimaster.library')
+        if args.zune_library:
+            native_hunk(args.zune_library)
+            shutil.copy2(args.zune_library, guest/'Libs/zunemaster.library')
+        if args.mui_classes:
+            for path in args.mui_classes.iterdir():
+                if path.is_file() and path.suffix.lower() in ('.mcc', '.mcp', '.mui'):
+                    native_hunk(path)
+                    shutil.copy2(path, guest/'Libs/MUI'/path.name)
+        if args.calltips:
+            native_hunk(args.calltips)
+            shutil.copy2(args.calltips, guest/'Libs/MUI/Calltips.mcc')
+        classes = guest/'Libs/MUI'
     for name in ('Listtree.mcc', 'Calltips.mcc'):
-        path = guest/'Libs/MUI'/name
+        path = classes/name
         if not path.is_file():
             raise RuntimeError('required MUI superclass missing: '+str(path))
         native_hunk(path)
@@ -429,8 +438,10 @@ def stage(args):
     datatype_setup = 'C:AddDataTypes REFRESH QUIET\n' if (guest/'C/AddDataTypes').is_file() else ''
     startup = ('FailAt 21\nC:MakeDir RAM:T RAM:ENV\nC:Assign T: RAM:T\n'
                'C:Copy SYS:Prefs/Env-Archive RAM:ENV ALL QUIET\n'
-               'C:Assign ENV: RAM:ENV\nC:Assign MUI: SYS:\n'
+               'C:Assign ENV: RAM:ENV\n'
+               + ('C:Assign MUI: SYS:MUI\nC:Assign LIBS: MUI:Libs ADD\n' if args.mui_package else 'C:Assign MUI: SYS:\n') +
                'C:Assign LIBS: SYS:Classes ADD\nC:Assign AmiSSL: SYS:AmiSSL\n'
+               + ''.join(command+'\n' for command in args.setup_command)
                + datatype_setup + 'C:LoadMonDrvs\nStack 1048576\n'
                'SYS:browser-fixture-test --screen-mode >SYS:fixture-output.txt\n'
                'If WARN\nEcho "FIXTURE SCREEN FAILED" >>SYS:fixture-output.txt\nQuit 20\nEndIf\n'
@@ -454,6 +465,7 @@ def stage(args):
                         'If WARN\nEcho "FIXTURE MEMORY LIMIT FAILED" >>SYS:fixture-output.txt\nQuit 20\nEndIf\n')
         if args.memory_probe:
             startup += 'Run >NIL: SYS:memory-probe --sample SYS:memory-log.txt 50 "Initial CLI"\nC:Wait 3 SEC\n'
+        startup += (f'Stack {args.browser_stack}\n' if args.browser_stack else '')
         startup += (f'{browser_volume}Odyssey/OWB "http://127.0.0.1:{args.http_port}/" >SYS:browser-output.txt\n'
                     'Echo "RETURN=$RC" >>SYS:browser-output.txt\n'
                     'Echo BROWSER_EXIT >>SYS:browser-output.txt\n')
@@ -761,6 +773,7 @@ def main():
     parser.add_argument('--data-hdf', type=Path, help='clone a >=256 MiB raw DOS7 FFS hardfile and run from DH1:Odyssey')
     parser.add_argument('--xdftool', type=Path, default=shutil.which('xdftool'), help='amitools tool used to populate only the cloned data image')
     parser.add_argument('--mui-classes', type=Path)
+    parser.add_argument('--mui-package', type=Path, help='install this MUI directory as MUI:, replacing --mui-library and all class options')
     parser.add_argument('--zune-library', type=Path, help='matching zunemaster.library required by native Zune MCCs')
     parser.add_argument('--calltips', type=Path)
     parser.add_argument('--sdk', type=Path, default=ROOT/'build/amigaos3-sdk')
@@ -794,6 +807,8 @@ def main():
     parser.add_argument('--timeout', type=int, default=600)
     parser.add_argument('--network-timeout', type=int, default=60, help='seconds allowed for HTTPS, WebSocket echo/cancel and host TLS/WS operations')
     parser.add_argument('--startup-delay', type=int, default=0)
+    parser.add_argument('--setup-command', action='append', default=[], help='AmigaDOS command to run after the assigns; repeatable')
+    parser.add_argument('--browser-stack', type=int, default=0, help='stack in bytes for the browser, instead of the fixture\'s 1 MiB')
     parser.add_argument('--hold', type=int, default=0, help='seconds for optional GDB inspection after checks')
     args = parser.parse_args()
     args.storage_token = secrets.token_hex(16)
