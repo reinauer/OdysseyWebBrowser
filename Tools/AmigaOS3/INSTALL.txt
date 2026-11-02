@@ -42,10 +42,14 @@ Runtime requirements
   compatibility. Native tests use Picasso96, 800x600x24, 16 MiB RTG RAM
   and 512 MiB Zorro III RAM. These are tested settings, not a measured
   minimum memory requirement or physical-hardware performance claim.
-- A compatible MUI installation with Title, Listtree.mcc and Calltips.mcc.
-  Tests use Zune68's matching MUI5 muimaster.library 21.227 and
-  zunemaster.library, plus the native MUI5 Calltips.mcc. Ordinary Zune
-  muimaster.library 19.81 did not load that Calltips class.
+- MUI 5 with muimaster.library 21 or later, including Title.mui,
+  Listtree.mcc and Calltips.mcc. Native tests use MUI 5.0-20210831
+  (21.227), and Zune68's MUI5 muimaster.library 21.227 and zunemaster.library
+  with the native MUI5 Calltips.mcc. MUI 3.8 (19.x), MUI 3.9 (20.x, no Title
+  class) and ordinary Zune68 (19.81) do not work, which includes the Zune68
+  release on Aminet at the time of writing. If the library is too old or
+  missing, the browser shows a requester naming the version it found.
+  Check yours with: Version muimaster.library
 - Installed picture and PNG datatypes, and normal startup datatype
   registration (C:AddDataTypes REFRESH QUIET). Toolbar pictures require
   these; the fixture checks the actual back.png through MUI Dtpic.

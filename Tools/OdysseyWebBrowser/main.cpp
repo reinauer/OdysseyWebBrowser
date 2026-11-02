@@ -64,6 +64,8 @@
 #include "gui.h"
 #include "alocale.h"
 #if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+#include <proto/intuition.h>
+
 #include "AmigaOS3CurlShutdown.h"
 #endif
 
@@ -516,6 +518,43 @@ void close_libs(void)
     }
 }
 #else
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+/* MUI 3.9 reports version 20 without the Title class this browser subclasses,
+   and Zune68's usual build reports 19. */
+#define ODYSSEY_MUI_VERSION 21
+
+/* Workbench starts have no console, so this also needs a requester. */
+static void report_mui_version(void)
+{
+	char text[128];
+	struct EasyStruct request = { sizeof(request), 0, (STRPTR)"Odyssey", (STRPTR)"%s", (STRPTR)"OK" };
+	struct Library *found = OpenLibrary(MUIMASTER_NAME, 0);
+
+	if(found)
+	{
+		snprintf(text, sizeof(text), "Odyssey needs MUI 5, " MUIMASTER_NAME " %d or later.\nThis system has version %d.%d.",
+			ODYSSEY_MUI_VERSION, found->lib_Version, found->lib_Revision);
+		CloseLibrary(found);
+	}
+	else
+	{
+		snprintf(text, sizeof(text), "Odyssey needs MUI 5, " MUIMASTER_NAME " %d or later.\nNo " MUIMASTER_NAME " was found.",
+			ODYSSEY_MUI_VERSION);
+	}
+
+	fprintf(stderr, "%s\n", text);
+	CONST_APTR arguments[] = { text };
+	EasyRequestArgs(NULL, &request, NULL, arguments);
+}
+#else
+#define ODYSSEY_MUI_VERSION MUIMASTER_VMIN
+
+static void report_mui_version(void)
+{
+	fprintf(stderr, "Failed to open " MUIMASTER_NAME ".\n");
+}
+#endif
+
 ULONG open_libs(void)
 {
 	if(!(KeymapBase = OpenLibrary("keymap.library", 39)))
@@ -524,9 +563,9 @@ ULONG open_libs(void)
 		return FALSE;
 	}
 
-	if(!(MUIMasterBase = OpenLibrary(MUIMASTER_NAME, MUIMASTER_VMIN)))
+	if(!(MUIMasterBase = OpenLibrary(MUIMASTER_NAME, ODYSSEY_MUI_VERSION)))
 	{
-		fprintf(stderr, "Failed to open " MUIMASTER_NAME ".\n");
+		report_mui_version();
 		return FALSE;
 	}
 
