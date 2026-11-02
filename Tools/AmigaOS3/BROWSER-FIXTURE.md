@@ -248,6 +248,18 @@ simple HTTP page checks.
 Reports are also printed and appended immediately to `reports.jsonl`, so
 results remain available during an interactive hold or a later failure.
 
+For memory and timing measurements, `--memory-probe` stages
+[MemoryProbe.c](MemoryProbe.c) and logs Exec free memory each second, and
+`--corpus DIRECTORY` then browses a `fetch-memory-corpus.py` snapshot.
+`--corpus-cycles`, `--corpus-settle` and `--corpus-page-timeout` set the number
+of visits, the time each page stays open and the time allowed for each page.
+`--leave-mib` holds memory to simulate a smaller system, while `--z3-memory` and
+`--fast-memory` select a real configuration. `--stall-timeout` ends a run with
+no browser requests, and such a failure leaves `failure.png`. `--uae-option`
+adds or replaces an emulator setting and may be repeated; timed runs need the
+cycle-exact settings. `result.json` then has a `memory` section, including the
+deepest stack use seen.
+
 Optional `--gdb` takes `screen.png` through the emulator's GDB monitor after
 the checks. Inspect that image separately: a successful screenshot command
 is not proof of correct rendered content. `--hold SECONDS` keeps the guest

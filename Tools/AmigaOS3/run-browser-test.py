@@ -31,7 +31,7 @@ canvas{border:2px solid #182b45} .pass{color:#166534}</style>
 <div id="box">Native HTML and CSS</div><p><canvas id="canvas" width="160" height="80"></canvas></p>
 <p id="status">Waiting for JavaScript...</p><a href="/second.html">Navigation test</a>
 <script>
-window.onload=function(){var websocketTest=false;var blackholePort=0;var httpsTest=false;var httpsPort=0;var untrustedPort=0;var networkTimeout=0;var navigationTest=false;var interactionTest=false;var storageToken='persisted';var result={phase:'initial'};try{
+window.onload=function(){var websocketTest=false;var blackholePort=0;var httpsTest=false;var httpsPort=0;var untrustedPort=0;var networkTimeout=0;var navigationTest=false;var interactionTest=false;var corpusTest=false;var storageToken='persisted';var result={phase:'initial'};try{
 result.dom=document.getElementById('unicode').textContent==='Unicode: caf\\u00e9 \\u03a9';
 result.layout=document.getElementById('box').getBoundingClientRect().width===272;
 var c=document.getElementById('canvas').getContext('2d');
@@ -44,7 +44,7 @@ var reported=false;var tlsStarted=false;function sendReport(){if(reported)return
 var ok=result.dom&&result.layout&&result.canvas&&result.javascript&&result.storage&&(!websocketTest||(result.websocket&&result.httpDuringWebSocket&&result.websocketCancel&&result.httpAfterCancel))&&(!httpsTest||(result.httpsContent&&result.httpsScript&&result.wrongHostRejected&&result.untrustedRejected));
 document.getElementById('status').textContent=ok?'PASS native browser checks':JSON.stringify(result);
 document.getElementById('status').className=ok?'pass':'';
-setTimeout(function(){var r=new XMLHttpRequest();r.open('GET','/report?data='+encodeURIComponent(JSON.stringify(result)),true);r.onload=function(){if(navigationTest&&ok)location.href='/second.html';else if(interactionTest&&ok)location.href='/interaction.html';};r.send();},1000);
+setTimeout(function(){var r=new XMLHttpRequest();r.open('GET','/report?data='+encodeURIComponent(JSON.stringify(result)),true);r.onload=function(){if(navigationTest&&ok)location.href='/second.html';else if(interactionTest&&ok)location.href='/interaction.html';else if(corpusTest&&ok)location.href='/corpus-page/0';};r.send();},1000);
 }
 function report(){if(!httpsTest){sendReport();return;}if(tlsStarted)return;tlsStarted=true;
 function request(url,done){var r=new XMLHttpRequest();r.open('GET',url,true);r.timeout=networkTimeout;r.onload=function(){done(false,r.status,r.responseText);};r.onerror=function(){done(true,0,'');};r.ontimeout=function(){result.httpsError='timeout';done(false,0,'');};r.send();}
@@ -84,7 +84,7 @@ def test_page(args):
     page = PAGE
     for key, value in {'websocketTest': args.websocket, 'blackholePort': args.blackhole_port,
                        'httpsTest': args.https, 'httpsPort': args.https_port,
-                       'untrustedPort': args.untrusted_port, 'networkTimeout': args.network_timeout * 1000, 'navigationTest': args.navigation, 'interactionTest': args.interaction}.items():
+                       'untrustedPort': args.untrusted_port, 'networkTimeout': args.network_timeout * 1000, 'navigationTest': args.navigation, 'interactionTest': args.interaction, 'corpusTest': bool(args.corpus)}.items():
         original = 'false' if isinstance(value, bool) else '0'
         page = page.replace(('var '+key+'='+original+';').encode(), ('var '+key+'='+json.dumps(value)+';').encode())
     return page.replace(b"var storageToken='persisted';", ('var storageToken='+json.dumps(args.storage_token)+';').encode())
@@ -116,6 +116,79 @@ var result={phase:'interaction',value:field.value,events:events};
 result.nativeInput=field.value==='odyssey68k'&&['focus','keydown','input','click'].every(function(type){return events.some(function(event){return event.type===type&&event.trusted===true;});});
 document.getElementById('status').textContent=result.nativeInput?'PASS native input':JSON.stringify(result);
 var request=new XMLHttpRequest();request.open('GET','/report?data='+encodeURIComponent(JSON.stringify(result)),true);request.send();};</script>'''
+
+
+CORPUS_DRIVER = '''<script>(function(){var sent=false;function send(timedOut){if(sent)return;sent=true;var t=performance.timing;
+var result={phase:'corpus',index:INDEX,name:NAME,cycle:CYCLE,timedOut:timedOut,elements:document.getElementsByTagName('*').length,
+responseMs:t.responseEnd-t.navigationStart,domReadyMs:t.domContentLoadedEventEnd-t.navigationStart,loadMs:t.loadEventEnd-t.navigationStart};
+var request=new XMLHttpRequest();request.open('GET','/report?data='+encodeURIComponent(JSON.stringify(result)),true);
+request.onloadend=function(){location.href=NEXT;};request.send();}
+addEventListener('load',function(){setTimeout(function(){send(false);},SETTLE);});setTimeout(function(){send(true);},TIMEOUT);})();</script>'''
+
+
+def corpus_sequence(args):
+    pages = json.loads((args.corpus/'manifest.json').read_text())['pages']
+    return [(cycle, page) for cycle in range(args.corpus_cycles) for page in pages]
+
+
+def corpus_page(args, index):
+    """Serve a snapshot followed by the driver which reports and moves on."""
+    sequence = corpus_sequence(args)
+    cycle, page = sequence[index]
+    driver = CORPUS_DRIVER
+    for key, value in (('INDEX', index), ('NAME', page['name']), ('CYCLE', cycle),
+                       ('NEXT', '/corpus-page/'+str(index+1) if index+1 < len(sequence) else '/corpus-end'),
+                       ('SETTLE', args.corpus_settle*1000), ('TIMEOUT', args.corpus_page_timeout*1000)):
+        driver = driver.replace(key, json.dumps(value))
+    return (args.corpus/page['file']).read_bytes()+driver.encode()
+
+
+def memory_samples(guest):
+    path = guest/'memory-log.txt'
+    return path.read_text().count('\n') if path.exists() else 0
+
+
+def summarize_memory(guest, reports, requests):
+    """Reduce the guest samples to baseline, phase and peak Exec memory use."""
+    samples = []
+    for line in (guest/'memory-log.txt').read_text().splitlines():
+        fields = [int(value) for value in line.split()]
+        if len(fields) == 8:
+            samples.append({'seconds': fields[0]*86400+fields[1]*60+fields[2]/50,
+                            'chip': fields[3], 'fast': fields[4], 'largest': fields[5],
+                            'stack_used': fields[6], 'stack_size': fields[7]})
+    if not samples:
+        return {'error': 'no samples'}
+    baseline = samples[0]
+    def used(sample):
+        return baseline['fast']-sample['fast']
+    launch = next((index for index, sample in enumerate(samples) if used(sample) > 1024*1024), None)
+    first = next((request['memorySample'] for request in requests if request.get('memorySample')), None)
+    summary = {'baseline_fast_free': baseline['fast'], 'baseline_chip_free': baseline['chip'],
+               'baseline_largest_free': baseline['largest'],
+               'peak_fast_used': max(used(sample) for sample in samples),
+               'peak_chip_used': max(baseline['chip']-sample['chip'] for sample in samples),
+               'lowest_fast_free': min(sample['fast'] for sample in samples),
+               'lowest_largest_free': min(sample['largest'] for sample in samples),
+               'peak_stack_used': max(sample['stack_used'] for sample in samples),
+               'stack_size': samples[-1]['stack_size'],
+               'final_fast_used': used(samples[-1]), 'samples': len(samples)}
+    if launch is not None and first and first <= len(samples):
+        summary['guest_seconds_launch_to_first_request'] = round(samples[first-1]['seconds']-samples[launch]['seconds'], 2)
+        summary['fast_used_at_first_request'] = used(samples[first-1])
+    phases, start = [], first or 0
+    for report in reports:
+        end = min(report.get('memorySample', 0), len(samples))
+        window = samples[start:end]
+        if window:
+            phases.append({key: report[key] for key in ('phase', 'name', 'cycle', 'timedOut', 'elements', 'responseMs', 'domReadyMs', 'loadMs') if key in report}
+                          | {'guest_seconds': round(window[-1]['seconds']-window[0]['seconds'], 2),
+                             'peak_fast_used': max(used(sample) for sample in window),
+                             'end_fast_used': used(window[-1]),
+                             'stack_used': window[-1]['stack_used']})
+        start = max(start, end)
+    summary['phases'] = phases
+    return summary
 
 
 def prepare_tls(args, root, guest):
@@ -277,6 +350,10 @@ def stage(args):
         required.append(args.calltips)
     if args.zune_library:
         required.append(args.zune_library)
+    if args.memory_probe:
+        required.append(ROOT/'Tools/AmigaOS3/MemoryProbe.c')
+    if args.corpus:
+        required.append(args.corpus/'manifest.json')
     if args.https:
         if not args.openssl:
             raise RuntimeError('--https requires --openssl or openssl on PATH')
@@ -337,6 +414,10 @@ def stage(args):
                str(guest/'browser-fixture-test'), '-lamiga']
     with (root/'fixture-build.log').open('w') as log:
         subprocess.run(command, check=True, stdout=log, stderr=log)
+        if args.memory_probe:
+            subprocess.run([str(args.cc.resolve()), '-m68020', '-O2',
+                            str(ROOT/'Tools/AmigaOS3/MemoryProbe.c'), '-o', str(guest/'memory-probe')],
+                           check=True, stdout=log, stderr=log)
     for path in guest.rglob('*'):
         if path.is_file():
             path.chmod(path.stat().st_mode | 0o100)
@@ -368,6 +449,11 @@ def stage(args):
     else:
         startup += (f'C:Wait {args.startup_delay} SEC\n' if args.startup_delay else '')
         browser_volume = 'DH1:' if args.data_hdf else 'SYS:'
+        if args.leave_mib:
+            startup += (f'SYS:memory-probe --leave {args.leave_mib*1024*1024} >>SYS:fixture-output.txt\n'
+                        'If WARN\nEcho "FIXTURE MEMORY LIMIT FAILED" >>SYS:fixture-output.txt\nQuit 20\nEndIf\n')
+        if args.memory_probe:
+            startup += 'Run >NIL: SYS:memory-probe --sample SYS:memory-log.txt 50 "Initial CLI"\nC:Wait 3 SEC\n'
         startup += (f'{browser_volume}Odyssey/OWB "http://127.0.0.1:{args.http_port}/" >SYS:browser-output.txt\n'
                     'Echo "RETURN=$RC" >>SYS:browser-output.txt\n'
                     'Echo BROWSER_EXIT >>SYS:browser-output.txt\n')
@@ -386,11 +472,12 @@ def stage(args):
         f'kickstart_rom_file={args.rom.resolve()}\n'
         'cpu_model=68020\ncpu_24bit_addressing=false\ncpu_speed=max\n'
         'cpu_compatible=false\nchipset=aga\nchipmem_size=4\n'
-        f'z3mem_size={args.z3_memory}\nfastmem_size=8\nsound_output=none\n'
+        f'z3mem_size={args.z3_memory}\nfastmem_size={args.fast_memory}\nsound_output=none\n'
         'bsdsocket_emu=true\ngfxcard_size=16\ngfxcard_type=ZorroIII\n'
         'gfx_width_windowed=800\ngfx_height_windowed=600\n'
         f'filesystem2=rw,DH0:System:{guest},0\nuaehf0=dir,rw,DH0:System:{guest},0\n'
-        + disk_config + f'debugging_features=gdbserver\ngdb_port={args.gdb_port}\n')
+        + disk_config + f'debugging_features=gdbserver\ngdb_port={args.gdb_port}\n'
+        + ''.join(option+'\n' for option in args.uae_option))
     inputs = {'command': command, 'desktop_omissions':omissions,
               'arguments': {key: str(value) if isinstance(value, Path) else value
                                               for key, value in vars(args).items()},
@@ -410,6 +497,7 @@ def stage(args):
 
 def run(args, root, guest, config):
     reports, requests, websocket_events, blackhole_events, tls_events = [], [], [], [], []
+    manifest = json.loads((args.corpus/'manifest.json').read_text()) if args.corpus else None
     stop_blackhole = threading.Event()
     class Blackhole(socketserver.BaseRequestHandler):
         def handle(self):
@@ -437,7 +525,7 @@ def run(args, root, guest, config):
             except (ConnectionResetError, BrokenPipeError, ssl.SSLError):
                 pass
         def do_GET(self):
-            requests.append({'port':self.server.server_port, 'path':self.path, 'monotonic':time.monotonic()})
+            requests.append({'port':self.server.server_port, 'path':self.path, 'monotonic':time.monotonic(), 'memorySample':memory_samples(guest)})
             url = urlsplit(self.path)
             if url.path == '/websocket' and args.websocket:
                 websocket_echo(self, websocket_events, args.network_timeout)
@@ -448,6 +536,7 @@ def run(args, root, guest, config):
                 except (KeyError, ValueError):
                     report = {'error': 'malformed report'}
                 report['hostReceivedMonotonic'] = time.monotonic()
+                report['memorySample'] = memory_samples(guest)
                 reports.append(report)
                 print('Browser report:', json.dumps(report), flush=True)
                 with (root/'reports.jsonl').open('a') as log:
@@ -460,6 +549,23 @@ def run(args, root, guest, config):
                 body = b'acknowledged'
             elif url.path == '/second.html':
                 body = second_page(args)
+            elif url.path.startswith('/corpus-page/') and args.corpus:
+                body = corpus_page(args, int(url.path.rsplit('/', 1)[1]))
+            elif url.path == '/corpus-end' and args.corpus:
+                body = b'<!doctype html><title>Corpus complete</title><h1>Corpus complete</h1>'
+            elif url.path.startswith('/corpus/assets/') and args.corpus:
+                name = url.path.rsplit('/', 1)[1]
+                asset = next((entry for entry in manifest['assets'].values() if entry['file'] == name), None)
+                if not asset:
+                    self.send_error(404)
+                    return
+                body = (args.corpus/'assets'/name).read_bytes()
+                self.send_response(200)
+                self.send_header('Content-Type', asset['type'])
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             elif url.path == '/interaction.html' and args.interaction:
                 body = INTERACTION_PAGE
             elif url.path == '/tls-trusted':
@@ -570,10 +676,15 @@ def run(args, root, guest, config):
                             required_reports_ready = required_reports_ready and interaction is not None
                             if interaction:
                                 status['passed'] = interaction.get('nativeInput') is True
+                        if args.corpus and status['passed']:
+                            finished = next((request['monotonic'] for request in requests if request['path'] == '/corpus-end'), None)
+                            required_reports_ready = required_reports_ready and finished is not None and time.monotonic() > finished+args.corpus_settle
                         if not status['passed'] or required_reports_ready:
                             break
                     if process.poll() is not None:
                         raise RuntimeError('emulator exited before completion')
+                    if args.stall_timeout and requests and time.monotonic() > requests[-1]['monotonic']+args.stall_timeout:
+                        raise RuntimeError('no browser request for '+str(args.stall_timeout)+' seconds')
                     if (guest/'browser-output.txt').exists() and 'BROWSER_EXIT' in (guest/'browser-output.txt').read_text(errors='replace'):
                         raise RuntimeError('browser exited before reporting page checks')
                     time.sleep(1)
@@ -600,6 +711,14 @@ def run(args, root, guest, config):
                             print('Browser exited normally during hold; RETURN='+str(status['browser_return']), flush=True)
                             break
                         time.sleep(1)
+            except RuntimeError:
+                if args.gdb and process.poll() is None:
+                    with (root/'gdb-screenshot.log').open('a') as log:
+                        subprocess.run([str(args.gdb.resolve()), '--batch',
+                            '-ex', f'target remote 127.0.0.1:{args.gdb_port}',
+                            '-ex', 'monitor screenshot '+str(root/'failure.png'), '-ex', 'detach'],
+                            stdout=log, stderr=log, timeout=30)
+                raise
             finally:
                 process.terminate()
                 try:
@@ -622,6 +741,9 @@ def run(args, root, guest, config):
             tls_server.shutdown()
             tls_server.server_close()
         status.update(reports=reports, requests=requests, websocket_events=websocket_events, blackhole_events=blackhole_events, tls_events=tls_events)
+        if args.memory_probe and (guest/'memory-log.txt').exists():
+            status['memory'] = summarize_memory(guest, reports, requests)
+            shutil.copy2(guest/'memory-log.txt', root/'memory-log.txt')
         for name in ('fixture-output.txt','browser-output.txt'):
             if (guest/name).exists():
                 shutil.copy2(guest/name, root/name)
@@ -653,13 +775,22 @@ def main():
     parser.add_argument('--https', action='store_true', help='require trusted HTTPS content/script and certificate-negative requests')
     parser.add_argument('--navigation', action='store_true', help='navigate and reload a second page, preserving localStorage on DOS7')
     parser.add_argument('--interaction', action='store_true', help='require native mouse focus, typing odyssey68k, and clicking Check on the final page')
+    parser.add_argument('--memory-probe', action='store_true', help='sample Exec free memory each second into memory-log.txt and result.json')
+    parser.add_argument('--leave-mib', type=int, default=0, help='hold all but this much free fast memory before launching the browser (requires --memory-probe)')
+    parser.add_argument('--corpus', type=Path, help='browse a fetch-memory-corpus.py snapshot after the initial page')
+    parser.add_argument('--corpus-cycles', type=int, default=1, help='times to visit the complete corpus')
+    parser.add_argument('--corpus-settle', type=int, default=5, help='seconds to remain on each page after its load event')
+    parser.add_argument('--corpus-page-timeout', type=int, default=300, help='seconds before a page reports timedOut and the sequence moves on')
+    parser.add_argument('--stall-timeout', type=int, default=0, help='fail when the browser makes no request for this many seconds')
+    parser.add_argument('--fast-memory', type=int, default=8, help='Zorro II fast memory in MiB')
+    parser.add_argument('--uae-option', action='append', default=[], help='additional key=value emulator setting; repeatable')
     parser.add_argument('--openssl', type=Path, default=shutil.which('openssl'))
     parser.add_argument('--gdb-port', type=int, default=2350)
     parser.add_argument('--http-port', type=int, default=18788)
     parser.add_argument('--blackhole-port', type=int, default=18789, help='TCP listener which deliberately leaves TLS pending for cancellation testing')
     parser.add_argument('--https-port', type=int, default=18444)
     parser.add_argument('--untrusted-port', type=int, default=18445)
-    parser.add_argument('--z3-memory', type=int, choices=(128,256,512), default=512)
+    parser.add_argument('--z3-memory', type=int, choices=(0,16,32,64,128,256,512), default=512)
     parser.add_argument('--timeout', type=int, default=600)
     parser.add_argument('--network-timeout', type=int, default=60, help='seconds allowed for HTTPS, WebSocket echo/cancel and host TLS/WS operations')
     parser.add_argument('--startup-delay', type=int, default=0)
@@ -673,6 +804,10 @@ def main():
         ports += (args.https_port, args.untrusted_port)
     if args.navigation and not args.data_hdf:
         parser.error('--navigation requires --data-hdf for native filesystem storage')
+    if args.leave_mib and not args.memory_probe:
+        parser.error('--leave-mib requires --memory-probe')
+    if args.corpus and (args.navigation or args.interaction):
+        parser.error('--corpus replaces the navigation and interaction sequences')
     if min(args.timeout, args.network_timeout) <= 0 or min(args.hold, args.startup_delay) < 0 or any(not 0 < port <= 65535 for port in ports) or len(set(ports)) != len(ports):
         parser.error('invalid timing or port argument')
     root, guest, config = stage(args)
