@@ -216,6 +216,12 @@ public:
         return m_stack;
     }
 
+#if OS(AMIGAOS3)
+    // Exec's StackSwap moves a task without WTF knowing. Call this on the moved
+    // thread, or the collector scans from its stack pointer to the old origin.
+    WTF_EXPORT_PRIVATE void refreshStackBounds();
+#endif
+
     AtomStringTable* atomStringTable()
     {
         return m_currentAtomStringTable;

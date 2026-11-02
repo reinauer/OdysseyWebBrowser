@@ -18,9 +18,10 @@ The supplied Noto Sans font is distributed under the notice in Fonts.
 Start from a Shell:
 
   CD Work:Applications/Odyssey
-  Stack 2097152
   Set OWB_DISABLE_TOPSITES_SCREENSHOTS 1
   OWB "https://example.com/"
+
+No Stack command is needed: the browser allocates its own 2 MiB stack.
 
 Replace the example installation path with your own. Do not overwrite
 existing preferences or databases when upgrading an existing installation;

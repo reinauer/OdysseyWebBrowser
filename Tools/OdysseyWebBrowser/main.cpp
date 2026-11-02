@@ -101,6 +101,8 @@ extern "C"
 #endif
 
 /* Globals */
+/* Layout recursion has no stack check. Floats nested to WebCore's render depth
+   limit of 512 use 1.6 MiB on OS3; other measured pages use under 400 KiB. */
 unsigned long __stack = 2*1024*1024;
 jmp_buf bailout_env;
 
@@ -764,7 +766,11 @@ void main_loop(void)
 	}
 }
 
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+static int runBrowser(int argc, char* argv[])
+#else
 int main (int argc, char* argv[])
+#endif
 {
 	int result = 20;
 	#ifdef __amigaos4__	
@@ -831,3 +837,52 @@ int main (int argc, char* argv[])
 
     return result;
 }
+
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+/* newlib's startup ignores __stack, and Workbench or the Shell may supply only
+   4 KiB, which the browser overruns without any check. These are static because
+   locals are unreachable once StackSwap has moved the stack pointer. */
+static struct StackSwapStruct browserStack;
+static int browserArgc, browserResult;
+static char** browserArgv;
+
+/* WTF records the launch stack during static construction, before main. */
+extern "C" void wtfAmigaOS3StackSwapped(void);
+
+/* Separate so that main's stack pointer is the same on both sides of the swap. */
+static void __attribute__((noinline)) runOnBrowserStack(void)
+{
+	wtfAmigaOS3StackSwapped();
+	browserResult = runBrowser(browserArgc, browserArgv);
+}
+
+int main (int argc, char* argv[])
+{
+	struct Task *task = FindTask(NULL);
+
+	if((ULONG)task->tc_SPUpper - (ULONG)task->tc_SPLower >= __stack)
+		return runBrowser(argc, argv);
+
+	APTR stack = AllocVec(__stack, MEMF_ANY);
+
+	if(!stack)
+	{
+		fprintf(stderr, "Odyssey needs %lu bytes of stack\n", __stack);
+		return 20;
+	}
+
+	browserStack.stk_Lower = stack;
+	browserStack.stk_Upper = (ULONG)stack + __stack;
+	browserStack.stk_Pointer = (APTR)browserStack.stk_Upper;
+	browserArgc = argc;
+	browserArgv = argv;
+
+	StackSwap(&browserStack);
+	runOnBrowserStack();
+	StackSwap(&browserStack);
+	wtfAmigaOS3StackSwapped();
+
+	FreeVec(browserStack.stk_Lower);
+	return browserResult;
+}
+#endif

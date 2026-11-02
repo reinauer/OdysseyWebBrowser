@@ -136,6 +136,22 @@ const char* Thread::normalizeThreadName(const char* threadName)
 #endif
 }
 
+#if OS(AMIGAOS3)
+void Thread::refreshStackBounds()
+{
+    ASSERT(this == &Thread::current());
+    m_stack = StackBounds::currentThreadStackBounds();
+    m_savedLastStackTop = stack().origin();
+}
+
+// For callers which cannot include this header: AmigaOS proto macros such as
+// Lock and Wait collide with WTF names.
+extern "C" void wtfAmigaOS3StackSwapped(void)
+{
+    Thread::current().refreshStackBounds();
+}
+#endif
+
 void Thread::initializeInThread()
 {
 #if OS(AMIGAOS3)
