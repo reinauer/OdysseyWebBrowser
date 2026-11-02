@@ -804,6 +804,12 @@ int main (int argc, char* argv[])
 	{
 		freopen("NIL:", "w", stderr);
 		freopen("NIL:", "w", stdout);
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+		/* newlib sizes a stream's buffer on its first write with ExamineFH,
+		   which fails with error #80000008 on NIL:, as NIL: has no handler. */
+		setvbuf(stderr, NULL, _IONBF, 0);
+		setvbuf(stdout, NULL, _IONBF, 0);
+#endif
 	}
 
 	//dosnotify_init();
