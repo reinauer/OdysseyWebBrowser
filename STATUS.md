@@ -101,12 +101,13 @@ the pthread-enabled repaired C++ runtime in
 profiles: their newlib reentrancy layouts differ.
 
 - Build directory: `build/amigaos3-browser-oct29`.
-- Amiga archive: `build/amigaos3-browser-oct29/Odyssey-AmigaOS3.lha`,
-  from the `lha` target, with a `.sha256` sidecar.
+- Amiga archive: `build/amigaos3-browser-oct29/Odyssey-AmigaOS3.lha`
+  (47,705,765 bytes), from the `lha` target, with a `.sha256` sidecar.
   This is the archive to use on an Amiga.
-- `Build/inputs.json` records the checkout's state, so rebuilding after any
-  commit or tracked edit changes the archive's hash, though not the packaged
-  OWB.
+- LHA SHA256, built from `f5565331ed`:
+  `de0ae655ba67f3741e071eeabd3ee99f4afe6c4f8ef2e8ca2baea76e5d4a4aca`.
+  `Build/inputs.json` records the checkout's state, so rebuilding after any
+  commit or tracked edit changes this hash, though not the packaged OWB.
 - Packaged OWB SHA256:
   `8053c28aca69b4173a5321cf92087dd1619b17bbce76ce70e51b380708df08c2`.
 - Previous archives, both with OWB `74b6ade7`: the local ZIP
