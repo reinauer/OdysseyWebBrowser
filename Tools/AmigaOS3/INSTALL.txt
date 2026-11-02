@@ -2,7 +2,14 @@ Odyssey 3.2.2 - AmigaOS 3 native port
 
 Installation
 
-Copy the complete Odyssey directory to a writable native Amiga filesystem
+Extract Odyssey-AmigaOS3.lha with LhA, for example:
+
+  LhA x Odyssey-AmigaOS3.lha Work:Applications/
+
+This creates the Odyssey directory and its drawer icon. Unpacking is slow:
+an emulated 5 MIPS CPU took about 13 minutes.
+
+Keep the complete Odyssey directory on a writable native Amiga filesystem
 with long filename support. The native test installation uses AmigaOS 3.2
 FFS DOS7. Keep Resource, Conf, Fonts and the executable together: the port
 uses PROGDIR: paths. No global fontconfig assign or ICU data file is needed.

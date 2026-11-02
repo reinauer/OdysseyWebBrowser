@@ -27,8 +27,29 @@ python3 Tools/AmigaOS3/stage-install.py \
   --archive build/Odyssey-AmigaOS3-local.zip
 ```
 
-The optional ZIP uses sorted entries and fixed timestamps; the same inputs
-produce the same archive. The adjacent `.sha256` file records its checksum.
+`--lha-archive PATH` also packs an LHA archive for use on the Amiga, which
+needs `lha` on the host's PATH. The build directory's `lha` target stages the
+current `OWB` and writes `Odyssey-AmigaOS3.lha`:
+
+```sh
+ninja -C build/amigaos3-browser-oct29 lha
+```
+
+The cache variables `AMIGAOS3_NEWLIB_LICENSE` and `AMIGAOS3_PTHREAD_SOURCES`
+select the notice inputs. The target's staging directory is `lha-stage`.
+
+Packing uses `lha cqgo5`. Native LhA 2.15 refused `-lh7-` entries with RC=10,
+so `-lh5-` is used, which also suits slow CPUs. Generic headers leave out the
+builder's UID. `Resource/icudt49b` is left out of both archive types, and also
+out of the staged directory, because the port links its ICU data. The LHA
+alone also contains `Odyssey.info`, the drawer icon, beside the directory.
+Native LhA 2.15 unpacked it to a fresh DOS7 volume in 5 minutes 44 seconds on a
+cycle-exact 50 MHz 68030, and all files matched.
+
+Both archives use sorted entries and fixed timestamps; the same inputs
+produce the same archive, and a `.sha256` file beside each records its checksum.
+The inputs include the source commit and a hash of tracked changes, recorded in
+`Build/inputs.json`, so any commit or tracked edit changes the archive's hash.
 Inside the bundle, `SHA256SUMS` covers all files except itself; the input
 manifest records source roots and hashes, including linked library inputs.
 This identifies the supplied files; it does not infer that the supplied

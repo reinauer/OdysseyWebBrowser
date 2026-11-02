@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,11 +11,31 @@ import zipfile
 
 NEWLIB_URL = ('https://raw.githubusercontent.com/AmigaPorts/newlib-cygwin/'
               'fb0a76ceacae0c7c1442d5a1e00be6ba7f669de2/COPYING.NEWLIB')
+# 1980-01-01 UTC, matching the fixed timestamp of the ZIP entries.
+ARCHIVE_TIME = 315532800
 
 
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def write_checksum(archive):
+    with archive.with_name(archive.name+'.sha256').open('x') as stream:
+        stream.write(digest(archive)+'  '+archive.name+'\n')
+
+
+def write_lha(archive, output, names):
+    """Pack for LhA 2.15, the native tool which extraction was tested with.
+
+    Generic headers leave out the builder's UID; -lh5- suits slow CPUs.
+    """
+    for name in names:
+        os.utime(output/name, (ARCHIVE_TIME, ARCHIVE_TIME))
+    environment = dict(os.environ, TZ='UTC')
+    subprocess.run(['lha', 'cqgo5', str(archive), *names], cwd=output, env=environment, check=True)
+    subprocess.run(['lha', 'tq', str(archive)], env=environment, check=True, stdout=subprocess.DEVNULL)
+    write_checksum(archive)
 
 
 def main():
@@ -24,6 +45,7 @@ def main():
         parser.add_argument('--'+name, required=True, type=Path)
     parser.add_argument('--newlib-license-url', default=NEWLIB_URL)
     parser.add_argument('--archive', type=Path, help='Optional deterministic ZIP; must not exist')
+    parser.add_argument('--lha-archive', type=Path, help='Optional deterministic LHA; must not exist')
     args = parser.parse_args()
     for name, value in vars(args).items():
         if isinstance(value, Path):
@@ -31,14 +53,18 @@ def main():
     output = args.output
     if output.exists() or output.is_symlink():
         parser.error('output already exists: '+str(output))
-    if args.archive and (args.archive.exists() or args.archive.is_symlink()):
-        parser.error('archive already exists: '+str(args.archive))
-    if args.archive:
-        if output.resolve() in args.archive.resolve().parents:
+    for archive in (args.archive, args.lha_archive):
+        if not archive:
+            continue
+        if archive.exists() or archive.is_symlink():
+            parser.error('archive already exists: '+str(archive))
+        if output.resolve() in archive.resolve().parents:
             parser.error('archive must be outside the staged output directory')
-        checksum = args.archive.with_name(args.archive.name+'.sha256')
+        checksum = archive.with_name(archive.name+'.sha256')
         if checksum.exists() or checksum.is_symlink():
             parser.error('archive checksum already exists: '+str(checksum))
+    if args.lha_archive and not shutil.which('lha'):
+        parser.error('--lha-archive requires lha on PATH')
     roots = [args.source_root, args.dependency_root, args.runtime_root, args.pthread_sources]
     for root in roots:
         if not root.is_dir():
@@ -59,18 +85,22 @@ def main():
         copies.append((source, Path(target)))
         inputs[str(source.resolve())] = digest(source)
 
-    def add_tree(source, target):
+    def add_tree(source, target, exclude=None):
         if not source.is_dir():
             raise RuntimeError('missing input tree: '+str(source))
         for path in sorted(source.rglob('*')):
             if path.is_symlink():
                 raise RuntimeError('symlink input is not supported: '+str(path))
+            if exclude and exclude in path.parents:
+                continue
             if path.is_file():
                 if path.suffix.lower() in ('.library', '.mcc', '.mcp', '.datatype'):
                     raise RuntimeError('OS/MUI runtime file is not a bundle asset: '+str(path))
                 add_file(path, Path(target)/path.relative_to(source))
 
-    add_tree(args.source_root/'Dist', '.')
+    # The OS3 executable links its ICU data; these other platforms' files are
+    # most of the bundle's file count and would only slow native extraction.
+    add_tree(args.source_root/'Dist', '.', args.source_root/'Dist/Resource/icudt49b')
     add_tree(args.dependency_root/'share/amigaos3', '.')
     # Select the same relocatable font configuration used by native tests.
     add_file(args.dependency_root/'share/amigaos3/Conf/fontconfig/fonts.conf',
@@ -154,9 +184,12 @@ def main():
                     entry.external_attr = (0o100755 if path.name == 'OWB' else 0o100644) << 16
                     entry.compress_type = zipfile.ZIP_DEFLATED
                     archive.writestr(entry, path.read_bytes(), compresslevel=9)
-        checksum = args.archive.with_name(args.archive.name+'.sha256')
-        with checksum.open('x') as stream:
-            stream.write(digest(args.archive)+'  '+args.archive.name+'\n')
+        write_checksum(args.archive)
+    if args.lha_archive:
+        # Workbench only shows the extracted drawer when it has an icon.
+        shutil.copyfile(args.source_root/'Dist/Documentation.info', output/'Odyssey.info')
+        write_lha(args.lha_archive, output, ['Odyssey.info']+[
+            str(path.relative_to(output)) for path in sorted(bundle.rglob('*')) if path.is_file()])
     print('Staged '+str(bundle))
     print('OWB SHA256 '+manifest['binary_sha256'])
 
