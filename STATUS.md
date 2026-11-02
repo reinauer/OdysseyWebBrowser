@@ -80,8 +80,8 @@ Suggested next validation order:
 
 1. Cold-restart persistence and shutdown with active HTTP/WebSocket/TLS
    connections, extending the existing native browser fixture.
-2. Startup/browsing memory and performance measurements, then real TCP/IP
-   stack and physical-hardware testing when those systems are available.
+2. Real TCP/IP stack and physical-hardware testing when those systems are
+   available, repeating the memory measurements there.
 3. Broader current-SDK allocator and threaded-newlib regressions before
    replacing the local runtime repairs or proposing broader upstream fixes.
 
@@ -101,14 +101,23 @@ the pthread-enabled repaired C++ runtime in
 profiles: their newlib reentrancy layouts differ.
 
 - Build directory: `build/amigaos3-browser-oct29`.
-- Local installation archive: `build/Odyssey-AmigaOS3-local.zip`
-  (53,073,226 bytes), with a `.sha256` sidecar.
-- Archive SHA256:
-  `0d249e83821001099741866bb743c853a630d4bd26a58dd27abba06faa1ff888`.
+- Amiga archive: `build/amigaos3-browser-oct29/Odyssey-AmigaOS3.lha`,
+  from the `lha` target, with a `.sha256` sidecar.
+  This is the archive to use on an Amiga.
+- `Build/inputs.json` records the checkout's state, so rebuilding after any
+  commit or tracked edit changes the archive's hash, though not the packaged
+  OWB.
 - Packaged OWB SHA256:
-  `74b6ade751d6e79d4b81299dbd6632e8b112a95b0c17325f434a5645b4c0ce94`.
-- Packaging verification: `build/amigaos3-install-final/verification.json`.
-  All 2,589 staged files match the ZIP; CRC and recorded checksums pass.
+  `8053c28aca69b4173a5321cf92087dd1619b17bbce76ce70e51b380708df08c2`.
+- Previous archives, both with OWB `74b6ade7`: the local ZIP
+  `build/Odyssey-AmigaOS3-local.zip`, not rebuilt since, and LHA `5b12cc5b`.
+  Native LhA 2.15 extraction was proved only on that LHA, in
+  `build/amigaos3-lha-final`, where all 253 files and the drawer icon matched
+  with `RC=0`. Repeating it needs a native `lha_68020`, which is no longer in
+  the scratch area.
+- Packaging verification of the previous ZIP:
+  `build/amigaos3-install-final/verification.json`. All 2,589 staged files
+  matched; CRC and recorded checksums passed.
 
 The archive is local and has not been published as a release. It includes
 the browser resources, fonts, notices and build identity; OS, MUI, RTG and
@@ -146,14 +155,39 @@ documentation does not constitute another native test run.
 The tested configuration uses an AmigaOS 3.2 guest, 68020 without an FPU,
 512 MiB Zorro III RAM, 800x600x24 RTG, Zune68 MUI5 21.227 with its matching
 zunemaster and Calltips class, registered PNG datatypes, AmiSSL 5.27 and a
-native long-filename FFS DOS7 installation. These are tested settings,
-not minimum requirements. Ordinary Zune MUI 19.81 did not load the tested
-Calltips class.
+native long-filename FFS DOS7 installation. Memory requirements are in
+[MEMORY.md](Tools/AmigaOS3/MEMORY.md): 256 MiB is recommended with at least
+150 MiB free at launch, and 128 MiB froze on a heavy page, measured on Zune68.
+The browser requires muimaster.library 21 and reports the version it found;
+ordinary Zune 19.81 and MUI 3.9 cannot run it. Zune68 on Aminet is built from
+`main` and reports 19.81, so users need its `mui5-dev` branch or genuine MUI 5.
 
+On an A4000 layout (68040, 128 MiB processor-slot and 256 MiB Zorro III RAM),
+launched from a 4 KiB stack, OWB `8053c28a` visited all six corpus pages and quit
+natively with `RETURN=0` on Zune68 and on genuine MUI 5.0-20210831 (21.227). From
+a Workbench icon it opens on genuine MUI, quits and frees its memory, and on Zune
+19.81 it shows the version requester and exits. Results are in
+`build/amigaos3-crash2`: `cq-zune`, `cq-mui5`, `wb6-mui5` and `wb7-z19`. Run
+genuine MUI with `--mui-package`.
+
+The tester's `#80000008` was an icon launch on Zune 19.81 or MUI 3.8. On a
+Workbench start `main` reopens stderr on `NIL:`, and newlib's first write calls
+`ExamineFH` on it to size a buffer, which crashes because `NIL:` has no handler.
+Both streams are now unbuffered. The SDK's `_fstat` still has this fault for any
+buffered stream on `NIL:`, which belongs in newlib.
+
+Quitting after any page which created a `WorkQueue`, such as one with a `data:`
+URL, used to hang in the SDK's exit join with about 92 MiB still allocated. The
+earlier Quit proofs used a test page without one. Queue threads now stop at exit.
+
+- The `about:` start page draws nothing but grey on Zune68 and genuine MUI;
+  the cause has not been investigated.
 - Physical Amiga hardware and real TCP/IP stacks remain untested; current
   networking proof uses WinUAE socket emulation and controlled servers.
-- Minimum memory, resource consumption and real-world browsing performance
-  still need measurement.
+- The browser stops loading silently when memory runs out; the cause has
+  not been determined. Live-Internet performance has not been measured.
+- `open_libs` failures other than MUI print only to stderr, so a Workbench
+  start ends silently if, for example, cybergraphics.library is missing.
 - Cold browser restart persistence and quitting with active connections
   have not been established by the final browser matrix.
 - Automatic TopSites screenshots are disabled in the tested configuration
