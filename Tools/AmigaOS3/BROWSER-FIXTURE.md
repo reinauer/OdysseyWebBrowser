@@ -263,6 +263,7 @@ from, which tests the browser's own stack selection. `--mui-package DIRECTORY`
 installs a MUI directory as `MUI:` and removes the fixture's own classes; genuine
 MUI classes mixed into the Zune68 ones failed to create `Title.mui`.
 `result.json` then has a `memory` section, including the deepest stack use seen.
+Results are in [MEMORY.md](MEMORY.md).
 
 Optional `--gdb` takes `screen.png` through the emulator's GDB monitor after
 the checks. Inspect that image separately: a successful screenshot command

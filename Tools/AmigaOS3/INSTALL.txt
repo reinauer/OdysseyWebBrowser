@@ -38,10 +38,18 @@ Runtime requirements
 - Motorola 68020 or later. This build uses software floating point.
 - AmigaOS 3 with the libraries provided by the tested AmigaOS 3.2 system.
   Earlier OS versions have not been established by the browser tests.
+- 256 MiB of fast RAM is recommended. At least 150 MiB must be free when
+  the browser starts, in addition to memory used by the TCP/IP stack and
+  anything else you run. A single free block of about 89 MiB is needed
+  to load the executable at all, so two separate 64 MiB boards are not
+  enough. A 24-bit address bus cannot reach this much memory.
+- 128 MiB starts and shows light pages, but a heavy page froze in testing.
+  The page stops loading with no error and the status bar shows Ready.
+  If this happens, restart the browser. Heavy pages took minutes on an
+  emulated 50 MHz 68030. These are WinUAE measurements, not physical
+  hardware results.
 - An RTG screen with at least 24-bit depth and cybergraphics.library
-  compatibility. Native tests use Picasso96, 800x600x24, 16 MiB RTG RAM
-  and 512 MiB Zorro III RAM. These are tested settings, not a measured
-  minimum memory requirement or physical-hardware performance claim.
+  compatibility. Native tests use Picasso96, 800x600x24 and 16 MiB RTG RAM.
 - MUI 5 with muimaster.library 21 or later, including Title.mui,
   Listtree.mcc and Calltips.mcc. Native tests use MUI 5.0-20210831
   (21.227), and Zune68's MUI5 muimaster.library 21.227 and zunemaster.library

@@ -104,8 +104,8 @@ callers were inspected against this tree. `git diff --check` passes for
 the branch changes. The native platform integration test below now adds
 emulator coverage. Native JavaScript execution and collector stress now
 pass as described below. The complete browser now links and renders pages
-in an AmigaOS 3.2 guest. Physical-hardware testing and browser memory
-benchmarks remain outstanding. The target-header check alone does not
+in an AmigaOS 3.2 guest. Physical-hardware testing remains outstanding.
+The target-header check alone does not
 validate these layers.
 
 ## First native platform milestone
@@ -310,11 +310,12 @@ Create the local installation archive using
 [INSTALL-BUNDLE.md](Tools/AmigaOS3/INSTALL-BUNDLE.md). See
 [the browser fixture](Tools/AmigaOS3/BROWSER-FIXTURE.md),
 [matched SDK profiles](Tools/AmigaOS3/SDK-PROFILES.md) and
-[upstream runtime findings](Tools/AmigaOS3/UPSTREAM.md). Measure resource use
-after startup and browsing work before choosing memory limits. The initial OS3
+[upstream runtime findings](Tools/AmigaOS3/UPSTREAM.md). See
+[browser memory and performance](Tools/AmigaOS3/MEMORY.md) for measured memory
+use and the resulting requirements. The initial OS3
 build disables video and MediaSource because no native FFmpeg stack is
 staged. OS4 multimedia/GPU features need a separate port. Native component tests are not proof
-of a complete browser, physical hardware behavior or a minimum-RAM target.
+of a complete browser or physical hardware behavior.
 
 The base is an older WebKit lineage despite the recent Odyssey release;
 this branch does not claim current upstream WebKit security coverage.

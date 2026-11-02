@@ -60,4 +60,5 @@ case-sensitive libxml2/libxslt `Copyright` files, FreeType's selected-license
 texts and SQLite's public-domain notice. The runtime's GCC exception and
 license texts, pinned newlib notice, and verbatim pthread source notices
 are included. Proprietary OS/MUI/AmiSSL runtime files are not collected.
-See the generated `AmigaOS3.readme` for installation and tested requirements.
+See the generated `AmigaOS3.readme` for installation and tested requirements,
+and [MEMORY.md](MEMORY.md) for the measurements behind its RAM figures.
