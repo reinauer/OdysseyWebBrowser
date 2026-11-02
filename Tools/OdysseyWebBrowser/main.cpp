@@ -67,6 +67,8 @@
 #include <proto/intuition.h>
 
 #include "AmigaOS3CurlShutdown.h"
+
+extern "C" void wtfAmigaOS3StopWorkQueues(void);
 #endif
 
 #undef accept
@@ -824,6 +826,7 @@ int main (int argc, char* argv[])
 #endif
 	atexit(close_libs);
 #if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+    atexit(wtfAmigaOS3StopWorkQueues);
     atexit(odysseyAmigaOS3CurlShutdown);
 #endif
 	atexit(destroy_application);

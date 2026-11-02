@@ -32,6 +32,33 @@
 
 #include <wtf/threads/BinarySemaphore.h>
 
+#if OS(AMIGAOS3)
+#include <wtf/HashSet.h>
+#include <wtf/Lock.h>
+#include <wtf/NeverDestroyed.h>
+
+// The SDK's exit code waits for every thread, including detached ones, so
+// queue threads must end first. Some queues are never destroyed.
+static Lock queueRunLoopsLock;
+
+static HashSet<RunLoop*>& queueRunLoops()
+{
+    static NeverDestroyed<HashSet<RunLoop*>> runLoops;
+    return runLoops;
+}
+
+extern "C" void wtfAmigaOS3StopWorkQueues(void)
+{
+    Locker locker { queueRunLoopsLock };
+    for (auto* runLoop : queueRunLoops()) {
+        runLoop->stop();
+        runLoop->dispatch([] {
+            RunLoop::current().stop();
+        });
+    }
+}
+#endif
+
 Ref<WorkQueue> WorkQueue::constructMainWorkQueue()
 {
     return adoptRef(*new WorkQueue(RunLoop::main()));
@@ -47,8 +74,19 @@ void WorkQueue::platformInitialize(const char* name, Type, QOS)
     BinarySemaphore semaphore;
     Thread::create(name, [&] {
         m_runLoop = &RunLoop::current();
+#if OS(AMIGAOS3)
+        RunLoop* runLoop = m_runLoop;
+        {
+            Locker locker { queueRunLoopsLock };
+            queueRunLoops().add(runLoop);
+        }
+#endif
         semaphore.signal();
         m_runLoop->run();
+#if OS(AMIGAOS3)
+        Locker locker { queueRunLoopsLock };
+        queueRunLoops().remove(runLoop);
+#endif
     })->detach();
     semaphore.wait();
 }
