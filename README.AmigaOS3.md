@@ -136,8 +136,8 @@ Implemented and compiled from real WTF sources:
   difference, Locale GMT offset and Odyssey's existing `DST_OFFSET`
   convention. The OS3 WTF wall clock avoids applying that offset twice.
 - Monotonic time from timer.device EClock, independent of wall-clock
-  adjustments. Timer/library handles are local to each call for this
-  initial implementation; persistent handles are a later optimization.
+  adjustments. timer.device is opened once per program and sleeping tasks
+  use copies of its request; the locale offset is read on first use.
 
 First build the matched October 29 runtime and dependencies using
 [the SDK profile instructions](Tools/AmigaOS3/SDK-PROFILES.md). Then build
