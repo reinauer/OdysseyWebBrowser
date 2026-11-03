@@ -197,8 +197,9 @@ checks do not validate the complete browser UI.
 The original GCC SDK runtime is single-threaded even though it includes a
 pthread archive. Native tests exposed shared `thread_local` storage and an
 unsynchronized MemMap heap. The port builds a separate pthread-enabled
-libstdc++ and emulated TLS implementation; it serializes the SDK allocator's
-four reentrant entry points with an allocation-free recursive Exec semaphore.
+libstdc++ and emulated TLS implementation. It replaces the SDK allocator's
+four reentrant entry points with dlmalloc over Exec memory, serialized by an
+allocation-free recursive Exec semaphore.
 The SDK installation is not modified. C++ runtime tests exercise TLS,
 static initialization, once, mutexes, conditions, shared/weak ownership,
 thread creation, sleeping and concurrent allocation. The SDK pthread

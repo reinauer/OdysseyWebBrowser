@@ -266,10 +266,19 @@ protect this allocator.
 
 `Source/WTF/wtf/amigaos3/Malloc.c` supplies wrappers around `_malloc_r`,
 `_free_r`, `_calloc_r`, and `_realloc_r`. The shared CMake allocator module
-links them with the corresponding GNU ld `--wrap` flags. They serialize
-the actual SDK allocator with a recursive Exec semaphore initialized
-without allocation. Keep these wrappers and flags in external test
-executables as well as the browser.
+links them with the corresponding GNU ld `--wrap` flags. Keep these wrappers
+and flags in external test executables as well as the browser.
+
+The wrappers no longer call the SDK allocator. MemMap adds a 16-byte header
+to every block, gives each request of about 32 KiB or more its own
+`AllocMem`, copies on every `realloc` and has no `memalign`, so each 16 KiB
+garbage-collector block cost 32 KiB. The wrappers call Doug Lea's malloc
+2.8.6 (`dlmalloc.c`, unmodified), included by `Malloc.c` with its own
+configuration. It takes 256 KiB segments and larger single blocks from
+`AllocMem(MEMF_ANY)`, each with a 16-byte list header so that exit can return
+all of them, and gives empty segments back to Exec. A recursive Exec
+semaphore, initialized without allocation, serializes every call.
+`amigaos3AlignedAlloc` backs `fastAlignedMalloc`.
 
 The native malloc alignment also falls below WebKit's assumed eight-byte
 minimum. OS3 `PreciseAllocation` records the exact adjustment to a 16-byte

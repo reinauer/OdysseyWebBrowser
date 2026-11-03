@@ -45,9 +45,10 @@ formatting and two concurrent pthread workers using locale caches. Linking
 requires `Source/WTF/wtf/amigaos3/Time.c`, the runtime overlay's `pthread`,
 and the SDK's `atomic` library. It also compiles
 `Source/WTF/wtf/amigaos3/Malloc.c` and wraps
-`_malloc_r`, `_free_r`, `_calloc_r` and `_realloc_r`: the SDK's shared MemMap
-heap bypasses newlib's usual malloc locks. Without this synchronization,
-concurrent ICU operations corrupt the heap. Both shims are part of the OS3 WTF
+`_malloc_r`, `_free_r`, `_calloc_r` and `_realloc_r`, which route every
+allocation to the port's locked heap: the SDK's shared MemMap heap bypasses
+newlib's usual malloc locks, and without synchronization concurrent ICU
+operations corrupt the heap. Both shims are part of the OS3 WTF
 integration. The runtime overlay also supplies explicit unsigned-to-float,
 double-to-float and IEEE double arithmetic helper objects, overriding the
 SDK libc math defects. The probe gives each worker a 256 KiB stack.

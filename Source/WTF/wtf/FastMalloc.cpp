@@ -71,6 +71,10 @@ extern "C" { void _oomCrash() { std::abort(); }; void oomCrash() __attribute__((
 #include <malloc.h>
 #endif
 
+#if OS(AMIGAOS3)
+#include <wtf/amigaos3/Malloc.h>
+#endif
+
 namespace WTF {
 
 #if ASSERT_ENABLED
@@ -243,25 +247,14 @@ void fastAlignedFree(void *p)
 
 #elif OS(AMIGAOS3)
 
-// The classic SDK declares posix_memalign, but does not supply it at link
-// time. Retain the malloc base immediately before the aligned payload.
+// The OS3 heap (amigaos3/Malloc.c) aligns within its segments, so a 16 KB
+// GC block costs 16 KB rather than a 32 KB request, and free() releases it.
 void* tryFastAlignedMalloc(size_t alignment, size_t size)
 {
     FAIL_IF_EXCEEDS_LIMIT(size);
     if (!alignment || (alignment & (alignment - 1)))
         return nullptr;
-    alignment = std::max(alignment, sizeof(void*));
-    size = size ? size : 2;
-    size_t overhead = alignment - 1 + sizeof(void*);
-    if (size > SIZE_MAX - overhead)
-        return nullptr;
-    void* base = malloc(size + overhead);
-    if (!base)
-        return nullptr;
-    uintptr_t address = (reinterpret_cast<uintptr_t>(base) + overhead) & ~(alignment - 1);
-    void* result = reinterpret_cast<void*>(address);
-    static_cast<void**>(result)[-1] = base;
-    return result;
+    return amigaos3AlignedAlloc(alignment, size ? size : 2);
 }
 
 void* fastAlignedMalloc(size_t alignment, size_t size)
@@ -275,8 +268,7 @@ void* fastAlignedMalloc(size_t alignment, size_t size)
 
 void fastAlignedFree(void* pointer)
 {
-    if (pointer)
-        free(static_cast<void**>(pointer)[-1]);
+    free(pointer);
 }
 
 #else
