@@ -466,6 +466,8 @@ def stage(args):
         if args.memory_probe:
             startup += 'Run >NIL: SYS:memory-probe --sample SYS:memory-log.txt 50 "Initial CLI"\nC:Wait 3 SEC\n'
         startup += (f'Stack {args.browser_stack}\n' if args.browser_stack else '')
+        # A fatal error ends OWB with 20; record it instead of stopping here.
+        startup += 'FailAt 21\n'
         startup += (f'{browser_volume}Odyssey/OWB "http://127.0.0.1:{args.http_port}/" >SYS:browser-output.txt\n'
                     'Echo "RETURN=$RC" >>SYS:browser-output.txt\n'
                     'Echo BROWSER_EXIT >>SYS:browser-output.txt\n')

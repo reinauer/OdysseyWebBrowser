@@ -38,19 +38,21 @@
 #include <wtf/NeverDestroyed.h>
 
 // The SDK's exit code waits for every thread, including detached ones, so
-// queue threads must end first. Some queues are never destroyed.
+// queue threads must end first. Some queues are never destroyed. The set
+// holds a reference: a queue thread that hits a fatal error ends without
+// removing its run loop.
 static Lock queueRunLoopsLock;
 
-static HashSet<RunLoop*>& queueRunLoops()
+static HashSet<RefPtr<RunLoop>>& queueRunLoops()
 {
-    static NeverDestroyed<HashSet<RunLoop*>> runLoops;
+    static NeverDestroyed<HashSet<RefPtr<RunLoop>>> runLoops;
     return runLoops;
 }
 
 extern "C" void wtfAmigaOS3StopWorkQueues(void)
 {
     Locker locker { queueRunLoopsLock };
-    for (auto* runLoop : queueRunLoops()) {
+    for (auto& runLoop : queueRunLoops()) {
         runLoop->stop();
         runLoop->dispatch([] {
             RunLoop::current().stop();

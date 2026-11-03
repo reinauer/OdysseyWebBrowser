@@ -1220,11 +1220,8 @@ DEFNEW
     return (IPTR)obj;
 }
 
-DEFDISP
+void stopTimerThread(void)
 {
-    GETDATA;
-    APTR n, m;
-
     owb_timer_should_exit = 1;
     /* Wait for the timer thread to fully exit before tearing down resources.
        On AmigaOS threads cannot be killed; the thread signals completion by
@@ -1234,6 +1231,14 @@ DEFDISP
         owbTimer->waitForCompletion();
         owbTimer = nullptr;
     }
+}
+
+DEFDISP
+{
+    GETDATA;
+    APTR n, m;
+
+    stopTimerThread();
 
     ITERATELISTSAFE(n, m, &window_list)
     {

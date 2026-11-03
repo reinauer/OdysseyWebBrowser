@@ -50,6 +50,11 @@ public:
 
     static void releaseFastMallocFreeMemoryInAllThreads();
 
+#if OS(AMIGAOS3)
+    // After a fatal error: end every storage thread without allocating.
+    static void killAllForExit();
+#endif
+
 private:
     void threadEntryPoint();
 

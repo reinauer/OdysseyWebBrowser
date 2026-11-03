@@ -60,7 +60,12 @@ extern "C" { void dprintf(const char *,... ); }
 #if OS(AMIGAOS3)
 // The Amiga Hunk target cannot emit the weak alias used by the other ports.
 // Keep the entry point called by the MUI JavaScriptCore allocation paths.
-extern "C" void oomCrash() { std::abort(); }
+#include <wtf/amigaos3/Fatal.h>
+extern "C" void oomCrash()
+{
+    amigaos3SetFatalReason("ran out of memory");
+    std::abort();
+}
 #else
 extern "C" { void _oomCrash() { std::abort(); }; void oomCrash() __attribute__((weak, alias ("_oomCrash"))); }
 #endif

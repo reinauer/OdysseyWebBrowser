@@ -65,10 +65,14 @@
 #include "alocale.h"
 #if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
 #include <proto/intuition.h>
+#include <intuition/intuitionbase.h>
+#include <pthread.h>
+#include <wtf/amigaos3/Fatal.h>
 
 #include "AmigaOS3CurlShutdown.h"
 
 extern "C" void wtfAmigaOS3StopWorkQueues(void);
+extern "C" void webkitAmigaOS3StopStorageThreads(void);
 #endif
 
 #undef accept
@@ -260,6 +264,69 @@ static void report_startup_failure(const char *text)
 	fprintf(stderr, "%s\n", text);
 #endif
 }
+
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+/* WebKit ends the program through abort() when memory runs out or one of its
+   checks fails. Report it and quit, instead of leaving the browser frozen. */
+static struct Task *fatalMainTask;
+static volatile int fatalLoopArmed, fatalReported, fatalThreadsStopped, fatalQuit;
+
+static void fatal_error(const char *reason, unsigned long codeOffset)
+{
+	struct Task *self = FindTask(NULL);
+	char text[160];
+
+	Forbid();
+	int first = !fatalReported++;
+	Permit();
+
+	if(first)
+	{
+		if(reason)
+			snprintf(text, sizeof(text), "Odyssey %s and has to quit.", reason);
+		else
+			snprintf(text, sizeof(text), "Odyssey stopped at an internal error and has to quit.\n(Code offset 0x%lx)", codeOffset);
+
+		/* On the main task, open on the screen of the browser's active
+		   window; other tasks must not touch its windows. */
+		struct Window *window = NULL;
+		if(self == fatalMainTask)
+		{
+			struct Window *active = ((struct IntuitionBase *)IntuitionBase)->ActiveWindow;
+			if(active && active->UserPort && active->UserPort->mp_SigTask == self)
+				window = active;
+		}
+		struct EasyStruct request = { sizeof(request), 0, (STRPTR)"Odyssey", (STRPTR)"%s", (STRPTR)"Quit" };
+		CONST_APTR arguments[] = { text };
+		EasyRequestArgs(window, &request, NULL, arguments);
+	}
+
+	if(self != fatalMainTask)
+	{
+		/* The exit code joins every thread, so this one has to end. */
+		fatalQuit = TRUE;
+		Signal(fatalMainTask, SIGBREAKF_CTRL_C);
+		pthread_exit(NULL);
+	}
+
+	if(fatalLoopArmed)
+	{
+		/* Leave the main loop and shut down as for a normal quit. */
+		fatalLoopArmed = FALSE;
+		longjmp(bailout_env, -1);
+	}
+
+	/* During start or shutdown, abort() ends the program. Stop the threads
+	   its exit code would wait for, without relying on the allocator. */
+	if(!fatalThreadsStopped++)
+	{
+		stopTimerThread();
+		odysseyAmigaOS3CurlShutdown();
+		webkitAmigaOS3StopStorageThreads();
+		wtfAmigaOS3StopWorkQueues();
+	}
+}
+#endif
 
 #ifdef __amigaos4__
 
@@ -760,7 +827,7 @@ void aros_timer_close();
 
 void main_loop(void)
 {
-	ULONG running = TRUE;
+	volatile ULONG running = TRUE; /* survives longjmp(bailout_env) */
 	ULONG signals;
 #if defined(__amigaos3__)
 	ULONG lowMemorySignal = watchLowMemory();
@@ -773,7 +840,17 @@ void main_loop(void)
 	if(setjmp(bailout_env) == -1)
 	{
 	    running = FALSE;
+#if defined(__amigaos3__)
+	    /* Memory may still be exhausted after a fatal error, and closing the
+	       browser allocates too. Release caches and take the reserve back. */
+	    if(fatalReported)
+	        releaseMemoryAfterAllocationFailure();
+#endif
 	}
+#if defined(__amigaos3__)
+	else
+		fatalLoopArmed = TRUE;
+#endif
 
 #if defined(__AROS__)
     if (running)
@@ -812,6 +889,11 @@ void main_loop(void)
 			setIsQuitting(TRUE);
 			if(isSafeToQuit())
 				running = FALSE;
+#if defined(__amigaos3__)
+			/* Another thread hit a fatal error and has ended. */
+			if(fatalQuit)
+				running = FALSE;
+#endif
 		}
 
 		if(signals & SIGBREAKF_CTRL_E)
@@ -832,6 +914,7 @@ void main_loop(void)
 	}
 
 #if defined(__amigaos3__)
+	fatalLoopArmed = FALSE;
 	stopWatchingLowMemory();
 #endif
 }
@@ -857,6 +940,8 @@ int main (int argc, char* argv[])
 #if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
     atexit(wtfAmigaOS3StopWorkQueues);
     atexit(odysseyAmigaOS3CurlShutdown);
+    fatalMainTask = FindTask(NULL);
+    amigaos3SetFatalHandler(fatal_error);
 #endif
 	atexit(destroy_application);
 #if defined(__AROS__)
@@ -894,7 +979,11 @@ int main (int argc, char* argv[])
 			if(app)
 			{
 				main_loop();
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+				result = fatalReported ? 20 : 0;
+#else
 				result = 0;
+#endif
 			}
 
 			destroy_application();

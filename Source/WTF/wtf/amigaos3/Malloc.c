@@ -186,6 +186,9 @@ static ULONG lowMemoryMask;
 static BYTE lowMemorySignal = -1;
 static ULONG reserveFlags;
 static void* volatile reserve;
+/* A second block that only a fatal error frees: by then the reserve above
+ * is usually spent, and the requester and the shutdown need memory too. */
+static void* volatile fatalReserve;
 
 static LONG __attribute__((used)) lowMemoryHandler(struct MemHandlerData* data __asm__("a0"),
                                                    APTR userData __asm__("a1"))
@@ -208,10 +211,14 @@ void amigaos3ReleaseReserve(void)
 {
     Forbid();
     void* block = reserve;
+    void* fatalBlock = fatalReserve;
     reserve = NULL;
+    fatalReserve = NULL;
     Permit();
     if (block)
         FreeMem(block, RESERVE_SIZE);
+    if (fatalBlock)
+        FreeMem(fatalBlock, RESERVE_SIZE);
 }
 
 unsigned long amigaos3WatchLowMemory(void)
@@ -227,6 +234,7 @@ unsigned long amigaos3WatchLowMemory(void)
     /* Hold the reserve in fast memory; chip memory belongs to the display. */
     reserveFlags = AvailMem(MEMF_FAST) ? MEMF_FAST : MEMF_ANY;
     reserve = AllocMem(RESERVE_SIZE, reserveFlags);
+    fatalReserve = AllocMem(RESERVE_SIZE, reserveFlags);
     lowMemoryInterrupt.is_Node.ln_Type = NT_INTERRUPT;
     lowMemoryInterrupt.is_Node.ln_Pri = 0;
     lowMemoryInterrupt.is_Node.ln_Name = (char*)"OWB heap reserve";

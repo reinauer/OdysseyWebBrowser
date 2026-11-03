@@ -27,7 +27,8 @@ unsigned long amigaos3WatchLowMemory(void);
  * the reserve if memory allows. Returns nonzero when the reserve is held. */
 int amigaos3LowMemoryHandled(void);
 
-/* Free the reserve without restoring it; any task may call it. */
+/* For a fatal error: free the reserve, and a second 1 MB block held only for
+ * this, without restoring either; any task may call it. */
 void amigaos3ReleaseReserve(void);
 
 /* Remove the handler and free the reserve; call it from the watching task. */

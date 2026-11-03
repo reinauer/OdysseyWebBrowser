@@ -1,5 +1,6 @@
 set(WTF_PUBLIC_HEADERS
     amigaos3/ConservativeScan.h
+    amigaos3/Fatal.h
     amigaos3/Malloc.h
     amigaos3/ThreadContext.h
     ASCIICType.h

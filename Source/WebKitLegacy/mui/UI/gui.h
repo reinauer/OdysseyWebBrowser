@@ -421,6 +421,9 @@ void releaseMemoryAfterAllocationFailure(void);
 void stopWatchingLowMemory(void);
 #endif
 
+/* Stop the thread that wakes the main loop every 14 ms (appclass.cpp). */
+void stopTimerThread(void);
+
 /* undefine them, since they can clash with some c++ classes/methods */
 #undef String
 #undef get

@@ -118,4 +118,23 @@ void StorageThread::releaseFastMallocFreeMemoryInAllThreads()
         thread->dispatch(&WTF::releaseFastMallocFreeMemory);
 }
 
+#if OS(AMIGAOS3)
+// The SDK's exit code joins every thread. A fatal error can end the program
+// before shutdown reaches terminate(), and terminate() allocates. Killing the
+// queue wakes the thread and ends it once its current task is done; queued
+// writes are lost.
+void StorageThread::killAllForExit()
+{
+    for (auto& thread : activeStorageThreads())
+        thread->m_queue.kill();
 }
+#endif
+
+}
+
+#if OS(AMIGAOS3)
+extern "C" void webkitAmigaOS3StopStorageThreads(void)
+{
+    WebCore::StorageThread::killAllForExit();
+}
+#endif

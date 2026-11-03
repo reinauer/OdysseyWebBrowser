@@ -7,10 +7,11 @@
 if (NOT TARGET AmigaOS3Allocator)
     add_library(AmigaOS3Allocator OBJECT
         "${CMAKE_CURRENT_LIST_DIR}/../WTF/wtf/amigaos3/Environment.c"
+        "${CMAKE_CURRENT_LIST_DIR}/../WTF/wtf/amigaos3/Fatal.c"
         "${CMAKE_CURRENT_LIST_DIR}/../WTF/wtf/amigaos3/Malloc.c"
         "${CMAKE_CURRENT_LIST_DIR}/../WTF/wtf/amigaos3/TTY.c")
     add_link_options(
-        -Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r,--wrap=isatty)
+        -Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r,--wrap=isatty,--wrap=abort)
     link_libraries("$<TARGET_OBJECTS:AmigaOS3Allocator>")
     # These compiler helpers must precede libc. Oct14 had an incorrect
     # unsigned high-bit constant, fixed in Oct29; the software floating point
