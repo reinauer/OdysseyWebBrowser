@@ -125,9 +125,10 @@ def main():
     add_file(args.dependency_root/'share/amigaos3/Fonts/NotoSans-LICENSE',
              'Licenses/NotoSans-LICENSE')
     add_tree(args.dependency_root/'share/licenses', 'Licenses/dependencies')
-    # These notices were previously omitted by case-sensitive source globs.
+    # Case-sensitive source globs once omitted the first five notices;
+    # nghttp2's is required since curl links it into OWB.
     for relative in ('libxml2/Copyright', 'libxslt/Copyright', 'freetype/FTL.TXT',
-                     'freetype/GPLv2.TXT', 'sqlite/PUBLIC-DOMAIN.txt'):
+                     'freetype/GPLv2.TXT', 'sqlite/PUBLIC-DOMAIN.txt', 'nghttp2/COPYING'):
         if not (args.dependency_root/'share/licenses'/relative).is_file():
             raise RuntimeError('dependency notice missing; restage licenses: '+relative)
     add_tree(args.runtime_root/'share/gcc-runtime', 'Licenses/gcc-runtime')

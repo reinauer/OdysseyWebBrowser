@@ -33,6 +33,7 @@ PACKAGES = {
     'libwebp': ('1.5.0', 'https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.5.0.tar.gz', '7d6fab70cf844bf6769077bd5d7a74893f8ffd4dfb42861745750c63c2a5c92c'),
     'libjpeg-turbo': ('3.1.0', 'https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.0/libjpeg-turbo-3.1.0.tar.gz', '9564c72b1dfd1d6fe6274c5f95a8d989b59854575d4bbee44ade7bc17aa9bc93'),
     'libpsl': ('0.21.5', 'https://github.com/rockdaboot/libpsl/releases/download/0.21.5/libpsl-0.21.5.tar.gz', '1dcc9ceae8b128f3c0b3f654decd0e1e891afc6ff81098f227ef260449dae208'),
+    'nghttp2': ('1.70.0', 'https://github.com/nghttp2/nghttp2/releases/download/v1.70.0/nghttp2-1.70.0.tar.xz', 'e05cb1388eaca3830aded4ccf20044b6e1ac1a61411dcca11b0437c4285c8bc2'),
     'sqlite': ('3.46.1', 'https://www.sqlite.org/2024/sqlite-amalgamation-3460100.zip', '77823cb110929c2bcb0f5d48e4833b5c59a8a6e40cdea3936b99e199dbbe5784'),
 }
 
@@ -296,6 +297,11 @@ def main():
             shutil.copy2(obj/'libpsl.pc',prefix/'lib/pkgconfig/libpsl.pc')
             with (prefix/'lib/pkgconfig/libpsl.pc').open('a') as pc:
                 pc.write('\nRequires.private: icu-uc\nLibs.private: -lstdc++ -lm -latomic -lpthread -lodyssey-amigaos3\n')
+        elif name == 'nghttp2':
+            # curl's HTTP/2 framing only: no tools, applications or bindings.
+            run(common+['--enable-lib-only'],obj,name+'-configure')
+            run(['make',f'-j{a.jobs}','-C','lib'],obj,name+'-build')
+            run(['make','-C','lib','install'],obj,name+'-install')
         elif name == 'sqlite':
             patch(src/'sqlite3.c','#if SQLITE_THREADSAFE && !defined(SQLITE_MUTEX_NOOP)', '#if SQLITE_THREADSAFE && !defined(SQLITE_MUTEX_NOOP) && !defined(SQLITE_MUTEX_PTHREADS)')
             flags = [*cpu,'-O2','-D_DEFAULT_SOURCE','-DSQLITE_OS_OTHER=1','-DSQLITE_THREADSAFE=1','-DSQLITE_MUTEX_PTHREADS','-DSQLITE_OMIT_LOAD_EXTENSION','-DSQLITE_OMIT_WAL','-DSQLITE_TEMP_STORE=2','-DSQLITE_MAX_MMAP_SIZE=0',f'-I{src}']
@@ -308,7 +314,8 @@ def main():
         manifest['packages'][name] = {'version':version,'url':url,'sha256':checksum}
         libraries = {'zlib':'z','libpng':'png','freetype':'freetype','pixman':'pixman-1',
             'expat':'expat','fontconfig':'fontconfig','cairo':'cairo','libxml2':'xml2',
-            'libxslt':'xslt','harfbuzz':'harfbuzz','libwebp':'webp','libjpeg-turbo':'jpeg','libpsl':'psl','sqlite':'sqlite3'}
+            'libxslt':'xslt','harfbuzz':'harfbuzz','libwebp':'webp','libjpeg-turbo':'jpeg','libpsl':'psl',
+            'nghttp2':'nghttp2','sqlite':'sqlite3'}
         library = prefix/'lib'/f'lib{libraries[name]}.a'
         if not subprocess.check_output([env['AR'],'t',str(library)],text=True).strip():
             raise RuntimeError(f'Empty target archive: {library}')

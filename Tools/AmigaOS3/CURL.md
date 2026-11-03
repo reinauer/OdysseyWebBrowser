@@ -9,8 +9,8 @@ The matched October 29 sources, logs and build products remain in
 library. See [SDK-PROFILES.md](SDK-PROFILES.md); the older default prefix and
 runtime must not be mixed with the moving `/opt/amiga-16.2` symlink.
 
-First build the pthread C++ runtime, ICU, zlib and libpsl with the adjacent
-builders. Then run:
+First build the pthread C++ runtime, ICU, zlib, libpsl and nghttp2 with the
+adjacent builders. Then run:
 
 ```sh
 python3 Tools/AmigaOS3/build-curl.py \
@@ -24,9 +24,16 @@ This installs real static curl archives, headers and pkg-config metadata. The
 TLS backend uses the compiler SDK's AmiSSL import stubs (AmiSSL 5.27,
 OpenSSL 3.6.2), without fake `libssl` or `libcrypto` archives. Public-suffix
 checks use libpsl and ICU. DNS resolution is synchronous; no resolver thread
-can accidentally use a socket base owned by another Amiga task. IPv6 and HTTP/2
-are currently disabled. The builder records commands, source hash, installed
-library hash and smoke binary hash in `manifest.json`.
+can accidentally use a socket base owned by another Amiga task. IPv6 is
+disabled. HTTP/2 uses nghttp2 1.70.0 (`build-dependencies.py nghttp2`, the
+library only); `CurlContext` then negotiates it over TLS with ALPN and waits
+for an existing connection to a host before opening another, so one
+connection per host carries all of a page's requests. On a live page of 19
+Wikimedia images, 18 of them from one host, this needed two TLS handshakes
+instead of five or six and loaded the page in 21.0 s instead of 29 to 30 s
+on a 68040; see
+[OPTIMIZATIONS.md](OPTIMIZATIONS.md). The builder records commands, source
+hash, installed library hashes and smoke binary hash in `manifest.json`.
 
 SDK adaptations are explicit: `unistd.h` supplies `ssize_t` before the
 native socket headers, and curl's two TLS `close` function-pointer calls are

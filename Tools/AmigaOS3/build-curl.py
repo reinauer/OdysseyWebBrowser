@@ -53,7 +53,8 @@ def main():
         math_helpers.append('integer-math.o')
     for name in ('downloads', 'logs', 'target'):
         (build/name).mkdir(parents=True, exist_ok=True)
-    for required in (prefix/'lib/libz.a', prefix/'lib/libpsl.a', prefix/'lib/libicuuc.a',
+    for required in (prefix/'lib/libz.a', prefix/'lib/libpsl.a', prefix/'lib/libnghttp2.a',
+                     prefix/'lib/libicuuc.a',
                      prefix/'lib/libodyssey-amigaos3.a', runtime/'lib/libstdc++.a',
                      toolchain/'m68k-amigaos/lib/libamisslstubs.a'):
         if not required.is_file():
@@ -125,7 +126,7 @@ def main():
     if not args.probes_only:
         run([source/'configure', '--host=m68k-unknown-amigaos', f'--prefix={prefix}',
              '--disable-shared', '--enable-static', '--with-amissl', '--with-libpsl',
-             '--without-libidn2', '--without-nghttp2', '--without-nghttp3',
+             '--without-libidn2', f'--with-nghttp2={prefix}', '--without-nghttp3',
              '--without-ngtcp2', '--without-libssh2', '--without-libssh',
              '--without-brotli', '--without-zstd', '--disable-ldap', '--disable-ldaps',
              '--disable-threaded-resolver', '--disable-unix-sockets', '--disable-ipv6',
@@ -156,7 +157,7 @@ def main():
         run([compiler, *flags, f'-I{prefix}/include', ROOT/'Tools/AmigaOS3/curl-test.c',
              build/'curl-files.o', build/'amiga-malloc.o', build/'amiga-tty.o', build/'amissl-context.o', f'-L{runtime}/lib', f'-L{prefix}/lib',
              *(runtime/'lib'/name for name in math_helpers),
-             '-lcurl', '-lamisslstubs', '-lz', '-lpsl', '-licuuc', '-licudata',
+             '-lcurl', '-lnghttp2', '-lamisslstubs', '-lz', '-lpsl', '-licuuc', '-licudata',
              '-lstdc++', '-lm', '-latomic', '-lpthread', '-lodyssey-amigaos3',
              '-Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r,--wrap=isatty',
              '-Wl,--wrap=getcwd,--wrap=utimes,--wrap=utime',
@@ -164,6 +165,7 @@ def main():
     manifest = {'version': VERSION, 'url': URL, 'sha256': SHA256, 'toolchain': str(toolchain),
                 'cxx_runtime': str(runtime), 'compiler_helpers': math_helpers, 'commands': history, 'environment': {k: env[k] for k in ('CC','CFLAGS','CPPFLAGS','LDFLAGS','LIBS','PKG_CONFIG_LIBDIR')},
                 'libcurl_sha256': digest(prefix/'lib/libcurl.a'),
+                'libnghttp2_sha256': digest(prefix/'lib/libnghttp2.a'),
                 'runtime_boundary': 'Application must initialize AmiSSL and bind native socket errno on the owning task.'}
     manifest['runtime_inputs'] = {str(path): digest(path) for path in
         [runtime/'lib'/name for name in math_helpers]

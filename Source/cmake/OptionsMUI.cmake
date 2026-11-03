@@ -173,8 +173,10 @@ if (AmigaOS3)
     set_target_properties(AmigaOS3::AmiSSL PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${AMIGAOS3_AMISSL_INCLUDE_DIR}"
         INTERFACE_LINK_LIBRARIES "${AMIGAOS3_AMISSL_STUBS_LIBRARY}")
+    # curl's HTTP/2 support is nghttp2, a separate static archive.
+    find_library(AMIGAOS3_NGHTTP2_LIBRARY nghttp2 REQUIRED)
     set_property(TARGET CURL::libcurl APPEND PROPERTY INTERFACE_LINK_LIBRARIES
-        AmigaOS3::AmiSSL ZLIB::ZLIB AmigaOS3::Support)
+        "${AMIGAOS3_NGHTTP2_LIBRARY}" AmigaOS3::AmiSSL ZLIB::ZLIB AmigaOS3::Support)
     find_package(JPEG REQUIRED)
     find_package(PNG REQUIRED)
     find_package(Fontconfig REQUIRED)

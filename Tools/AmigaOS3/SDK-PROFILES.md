@@ -16,7 +16,7 @@ floating point helper objects are not built or linked.
 | Pthread C++ runtime | `build/amigaos3-sdk/cxx-runtime-fpu` |
 | All browser dependencies | `build/amigaos3-sdk-fpu` |
 | ICU objects and host tools | `build/amigaos3-icu-fpu` |
-| Graphics, fonts, XML, PSL and SQLite objects | `build/amigaos3-deps-fpu` |
+| Graphics, fonts, XML, PSL, nghttp2 and SQLite objects | `build/amigaos3-deps-fpu` |
 | Curl objects | `build/amigaos3-curl-fpu` |
 | Browser, `-O2` | `build/amigaos3-browser-fpu` |
 | Browser, `-Os` (for comparison) | `build/amigaos3-browser-fpu-os` |
@@ -116,6 +116,9 @@ The complete October 29 rebuild uses these separate paths:
 
 The SDK content fingerprint is
 `047486a65ed6ae2711feedbd12187671e03edafe88d3e1c2963396b4f2f38823`.
+This prefix predates HTTP/2: before configuring a browser with it, build
+`build-dependencies.py --cpu soft ... nghttp2` and rerun `build-curl.py`, or
+CMake stops at the missing `libnghttp2.a`.
 The runtime manifest records the complete compiler, libraries, headers and
 source revisions. Its split pthread archive replaces only `pthread_key.o`
 and `pthread_cond.o`; the remaining SDK members are retained and checked.
