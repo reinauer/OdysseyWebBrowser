@@ -281,6 +281,12 @@ semaphore, initialized without allocation, serializes every call.
 `amigaos3AlignedAlloc` backs `fastAlignedMalloc`, and the
 `IsoAlignedMemoryAllocator` frees its blocks individually.
 
+`amigaos3WatchLowMemory` keeps a 1 MiB reserve in fast memory and installs
+an Exec memory handler. When any `AllocMem` in the system fails, the handler
+frees the reserve, asks Exec to retry, and signals the browser's main task,
+which releases WebCore's caches, trims the heap and takes a new reserve. The
+handler runs under `Forbid` in the failing task and touches only the reserve.
+
 The native malloc alignment also falls below WebKit's assumed eight-byte
 minimum. OS3 `PreciseAllocation` records the exact adjustment to a 16-byte
 aligned header, ensuring its cell has the required low-bit tag. Growth,

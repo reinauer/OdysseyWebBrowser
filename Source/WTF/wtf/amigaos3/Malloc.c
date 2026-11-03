@@ -15,6 +15,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <exec/execbase.h>
+#include <exec/interrupts.h>
 #include <exec/lists.h>
 #include <exec/memory.h>
 #include <exec/semaphores.h>
@@ -158,10 +160,118 @@ void* amigaos3AlignedAlloc(size_t alignment, size_t size)
     return result;
 }
 
+size_t amigaos3HeapFootprint(void)
+{
+    lockHeap();
+    size_t result = dlmalloc_footprint();
+    unlockHeap();
+    return result;
+}
+
+void amigaos3HeapTrim(void)
+{
+    lockHeap();
+    if (!heapReleased)
+        dlmalloc_trim(0);
+    unlockHeap();
+}
+
+/* Low-memory reserve. Exec calls memory handlers under Forbid, in the task
+ * whose AllocMem failed, possibly while that task is inside dlmalloc; the
+ * handler therefore touches only the reserve, never the heap. */
+#define RESERVE_SIZE (1024UL * 1024UL)
+static struct Interrupt lowMemoryInterrupt;
+static struct Task* volatile lowMemoryTask;
+static ULONG lowMemoryMask;
+static BYTE lowMemorySignal = -1;
+static ULONG reserveFlags;
+static void* volatile reserve;
+
+static LONG __attribute__((used)) lowMemoryHandler(struct MemHandlerData* data __asm__("a0"),
+                                                   APTR userData __asm__("a1"))
+{
+    (void)data;
+    (void)userData;
+    struct Task* task = lowMemoryTask;
+    if (!task)
+        return MEM_DID_NOTHING;
+    Signal(task, lowMemoryMask);
+    void* block = reserve;
+    if (!block)
+        return MEM_DID_NOTHING;
+    reserve = NULL;
+    FreeMem(block, RESERVE_SIZE);
+    return MEM_TRY_AGAIN;
+}
+
+void amigaos3ReleaseReserve(void)
+{
+    Forbid();
+    void* block = reserve;
+    reserve = NULL;
+    Permit();
+    if (block)
+        FreeMem(block, RESERVE_SIZE);
+}
+
+unsigned long amigaos3WatchLowMemory(void)
+{
+    if (lowMemoryTask)
+        return lowMemoryMask;
+    if (SysBase->LibNode.lib_Version < 39)
+        return 0; /* AddMemHandler() */
+    lowMemorySignal = AllocSignal(-1);
+    if (lowMemorySignal < 0)
+        return 0;
+    lowMemoryMask = 1UL << lowMemorySignal;
+    /* Hold the reserve in fast memory; chip memory belongs to the display. */
+    reserveFlags = AvailMem(MEMF_FAST) ? MEMF_FAST : MEMF_ANY;
+    reserve = AllocMem(RESERVE_SIZE, reserveFlags);
+    lowMemoryInterrupt.is_Node.ln_Type = NT_INTERRUPT;
+    lowMemoryInterrupt.is_Node.ln_Pri = 0;
+    lowMemoryInterrupt.is_Node.ln_Name = (char*)"OWB heap reserve";
+    lowMemoryInterrupt.is_Data = NULL;
+    lowMemoryInterrupt.is_Code = (void (*)(void))lowMemoryHandler;
+    lowMemoryTask = FindTask(NULL);
+    AddMemHandler(&lowMemoryInterrupt);
+    return lowMemoryMask;
+}
+
+int amigaos3LowMemoryHandled(void)
+{
+    if (!lowMemoryTask)
+        return 0;
+    SetSignal(0, lowMemoryMask);
+    if (!reserve) {
+        void* block = AllocMem(RESERVE_SIZE, reserveFlags);
+        Forbid();
+        if (!reserve) {
+            reserve = block;
+            block = NULL;
+        }
+        Permit();
+        if (block)
+            FreeMem(block, RESERVE_SIZE);
+    }
+    return reserve != NULL;
+}
+
+void amigaos3StopWatchingLowMemory(void)
+{
+    if (!lowMemoryTask)
+        return;
+    RemMemHandler(&lowMemoryInterrupt);
+    lowMemoryTask = NULL;
+    amigaos3ReleaseReserve();
+    FreeSignal(lowMemorySignal);
+    lowMemorySignal = -1;
+}
+
 /* Runs after C++ destructors and stdio shutdown, at the SDK heap's own
  * priority, and before libraries are closed. */
 static void __attribute__((used)) releaseHeap(void)
 {
+    amigaos3StopWatchingLowMemory();
     lockHeap();
     heapReleased = 1;
     struct SystemBlock* block;

@@ -762,6 +762,11 @@ void main_loop(void)
 {
 	ULONG running = TRUE;
 	ULONG signals;
+#if defined(__amigaos3__)
+	ULONG lowMemorySignal = watchLowMemory();
+#else
+	ULONG lowMemorySignal = 0;
+#endif
 
 	setIsSafeToQuit(TRUE);
 	
@@ -795,7 +800,12 @@ void main_loop(void)
 		/* Refresh each active browser if needed */
 		DoMethod(app, MM_OWBApp_Expose);
 
-		if(running && signals) signals = Wait(signals | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F/* | dosnotifysig */);
+		if(running && signals) signals = Wait(signals | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F | lowMemorySignal/* | dosnotifysig */);
+
+#if defined(__amigaos3__)
+		if(signals & lowMemorySignal)
+			releaseMemoryAfterAllocationFailure();
+#endif
 
 		if((signals & SIGBREAKF_CTRL_C) || isQuitting())
 		{
@@ -820,6 +830,10 @@ void main_loop(void)
 
 		methodstack_check();
 	}
+
+#if defined(__amigaos3__)
+	stopWatchingLowMemory();
+#endif
 }
 
 #if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))

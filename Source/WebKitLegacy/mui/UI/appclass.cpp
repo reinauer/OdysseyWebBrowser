@@ -94,6 +94,10 @@
 #include <WebCore/DOMWindow.h>
 #include <WebCore/MemoryCache.h>
 #include <WebCore/MemoryRelease.h>
+#include <wtf/MemoryPressureHandler.h>
+#if OS(AMIGAOS3)
+#include <wtf/amigaos3/Malloc.h>
+#endif
 #include "JITWorklist.h"
 #include <WebCore/CommonVM.h>
 #include "DataURLDecoder.h"
@@ -964,6 +968,35 @@ void WriteConfigFile(const char* url, AppSettings *settings)
     delete configFile;
 }
 
+#if OS(AMIGAOS3)
+unsigned long watchLowMemory(void)
+{
+    return amigaos3WatchLowMemory();
+}
+
+// The heap's memory handler gave up its reserve because an allocation in the
+// system failed. Release WebCore's caches and garbage, return free heap
+// segments to Exec and take the reserve back.
+void releaseMemoryAfterAllocationFailure(void)
+{
+    size_t before = amigaos3HeapFootprint();
+    auto& handler = MemoryPressureHandler::singleton();
+    handler.setUnderMemoryPressure(true);
+    handler.releaseMemory(Critical::Yes, Synchronous::Yes);
+    handler.setUnderMemoryPressure(false);
+    amigaos3HeapTrim();
+    bool reserved = amigaos3LowMemoryHandled();
+    fprintf(stderr, "OWB: memory ran out; released caches, heap %lu KB -> %lu KB%s\n",
+        (unsigned long)(before / 1024), (unsigned long)(amigaos3HeapFootprint() / 1024),
+        reserved ? "" : ", reserve not restored");
+}
+
+void stopWatchingLowMemory(void)
+{
+    amigaos3StopWatchingLowMemory();
+}
+#endif
+
 RefPtr<Thread> owbTimer;
 int owb_timer_should_exit = 0;
 struct Task *mainTask = NULL;
@@ -1041,13 +1074,11 @@ DEFNEW
     WTF::initializeMainThread();
     WebPlatformStrategies::initialize();
 
-#if 0 //OS(AMIGAOS)
-    auto& memoryPressureHandler = MemoryPressureHandler::singleton();
-    memoryPressureHandler.setLowMemoryHandler([] (Critical critical, Synchronous synchronous) {
+#if OS(AMIGAOS3)
+    // Run by releaseMemoryAfterAllocationFailure() and by the manual release.
+    MemoryPressureHandler::singleton().setLowMemoryHandler([] (Critical critical, Synchronous synchronous) {
         WebCore::releaseMemory(critical, synchronous);
-    });    
-    memoryPressureHandler.install();
-    printf("Memory Pressure Handler installed\n");
+    });
 #endif
 
     /* Task that is used to signal main loop for processing of RunLoop based work */

@@ -413,6 +413,14 @@ extern "C"
 }
 #endif
 
+#if defined(__amigaos3__)
+/* Low memory (appclass.cpp): the signal mask raised when an allocation in the
+ * system failed, and the response to it. */
+unsigned long watchLowMemory(void);
+void releaseMemoryAfterAllocationFailure(void);
+void stopWatchingLowMemory(void);
+#endif
+
 /* undefine them, since they can clash with some c++ classes/methods */
 #undef String
 #undef get
