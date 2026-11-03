@@ -829,8 +829,8 @@ int main (int argc, char* argv[])
 #endif
 {
 	int result = 20;
-	#ifdef __amigaos4__	
-	// save tc_UserData on run.	
+	#if defined(__amigaos4__) || defined(__amigaos3__)
+	// save tc_UserData on run; WTF keeps each thread's Thread there.
 	struct Task *CurrentTask = FindTask(NULL);
 	APTR olduserdata = CurrentTask->tc_UserData;
 	CurrentTask->tc_UserData = NULL;
@@ -893,7 +893,7 @@ int main (int argc, char* argv[])
 
 	//dosnotify_cleanup();
 
-    #ifdef __amigaos4__
+    #if defined(__amigaos4__) || defined(__amigaos3__)
 	// restore tc_UserData at exit
 	CurrentTask->tc_UserData = olduserdata;
 	#endif

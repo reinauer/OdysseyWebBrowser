@@ -31,6 +31,16 @@ static void endSnapshot()
     }
 }
 
+void* amigaOS3TaskUserData()
+{
+    return SysBase->ThisTask->tc_UserData;
+}
+
+void setAmigaOS3TaskUserData(void* data)
+{
+    SysBase->ThisTask->tc_UserData = data;
+}
+
 void AmigaOS3ThreadContext::initialize()
 {
     RELEASE_ASSERT(!m_task);

@@ -444,8 +444,12 @@ inline Thread& Thread::current()
     if (UNLIKELY(Thread::s_key == InvalidThreadSpecificKey))
         WTF::initialize();
 #endif
-#if OS(MORPHOS) || OS(AMIGAOS)
+#if OS(MORPHOS) || OS(AMIGAOS) || OS(AMIGAOS3)
+#if OS(AMIGAOS3)
+    Thread* thread = static_cast<Thread*>(amigaOS3TaskUserData());
+#else
     Thread* thread = getUserDataThreadPointer();
+#endif
     if (!thread)
         thread = currentMayBeNull();
     if (thread)

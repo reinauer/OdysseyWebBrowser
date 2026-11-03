@@ -605,6 +605,11 @@ void Thread::deleteTLSKey()
 #if !HAVE(FAST_TLS)
 void Thread::initializeTLSKey()
 {
+#if OS(AMIGAOS3)
+    // A program that ran earlier in the same CLI process may have left a
+    // value here; Thread::current() must not mistake it for a Thread.
+    setAmigaOS3TaskUserData(nullptr);
+#endif
     threadSpecificKeyCreate(&s_key, destructTLS);
 }
 #endif
@@ -618,6 +623,8 @@ Thread& Thread::initializeTLS(Ref<Thread>&& thread)
     threadSpecificSet(s_key, &threadInTLS);
 #if OS(MORPHOS) || OS(AMIGAOS) || OS(AROS)
     FindTask(NULL)->tc_UserData = &threadInTLS;
+#elif OS(AMIGAOS3)
+    setAmigaOS3TaskUserData(&threadInTLS);
 #endif
 #else
     _pthread_setspecific_direct(WTF_THREAD_DATA_KEY, &threadInTLS);
@@ -644,6 +651,8 @@ void Thread::destructTLS(void* data)
     threadSpecificSet(s_key, thread);
 #if OS(MORPHOS) || OS(AMIGAOS) || OS(AROS)
     FindTask(NULL)->tc_UserData = NULL;
+#elif OS(AMIGAOS3)
+    setAmigaOS3TaskUserData(nullptr);
 #endif
 #else
     _pthread_setspecific_direct(WTF_THREAD_DATA_KEY, thread);
