@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,122 @@ ARCHIVE = 'icu4c-62_2-src.tgz'
 URL = 'https://github.com/unicode-org/icu/releases/download/release-62-2/' + ARCHIVE
 SHA256 = 'f51976e6893df7b08e594fa798196f80cdf07df885fec129f55f7afe273b6901'
 PATCH = ROOT / 'Tools/AmigaOS3/patches/icu-62.2-m68k.patch'
+
+# The data is linked into the executable, so only what the browser can use is
+# kept. Locale data, collation and display names stay for these languages and
+# all their regional variants; other locales fall back to root data.
+KEEP_LANGUAGES = frozenset(('cs', 'da', 'de', 'el', 'en', 'es', 'fi', 'fr', 'hu', 'it', 'ja',
+                            'ko', 'nb', 'nl', 'no', 'pl', 'pt', 'ru', 'sv', 'tr', 'zh'))
+# WebKit decodes CJK and the other single-byte encodings itself. These are the
+# converters TextCodecICU.cpp opens, resolved through ICU's alias table.
+KEEP_CONVERTERS = frozenset((
+    'ibm-912_P100-1995', 'ibm-914_P100-1995', 'ibm-915_P100-1995', 'iso-8859_10-1998',
+    'ibm-921_P100-1995', 'iso-8859_14-1998', 'ibm-923_P100-1998', 'ibm-878_P100-1996',
+    'macos-0_2-10.2', 'ibm-5346_P100-1998', 'ibm-5347_P100-1998', 'ibm-5350_P100-1998',
+    'ibm-9448_X100-2005', 'ibm-5354_P100-1998', 'macos-7_3-10.2', 'macos-6_2-10.4',
+    'macos-29-10.2', 'macos-35-10.2', 'euc-tw-2014'))
+# Trees whose .res items are locales, each with its own res_index.
+LOCALE_TREES = ('', 'brkitr', 'coll', 'curr', 'lang', 'rbnf', 'region', 'unit', 'zone')
+LOCALE_NAME = re.compile(r'^[a-z]{2,3}(_[A-Za-z0-9]+)*$')
+
+
+def removed_data_item(name):
+    tree, _, leaf = name.rpartition('/')
+    stem, extension = os.path.splitext(leaf)
+    if tree == 'translit':
+        return True  # no browser or JavaScript API uses transliteration
+    if name in ('brkitr/cjdict.dict', 'unames.icu'):
+        return True  # Chinese/Japanese word dictionary; character names
+    if extension == '.cnv':
+        return stem not in KEEP_CONVERTERS
+    if extension == '.res' and tree in LOCALE_TREES and LOCALE_NAME.match(stem):
+        return stem.split('_')[0] not in KEEP_LANGUAGES
+    return False
+
+
+def rebuild_bundle(host, package, extracted, added, tree, bundle, transform, work, logs, env):
+    """Replace one resource bundle with a filtered copy built by genrb."""
+    name = (tree + '/' if tree else '') + bundle + '.res'
+    run([host / 'bin/icupkg', '-d', extracted, '-x', name, package],
+        work, logs / 'data-bundle-extract.log', env)
+    directory = extracted / tree if tree else extracted
+    dump = subprocess.check_output([str(host / 'bin/derb'), '-s', str(directory), '-c', bundle],
+                                   env=env, text=True)
+    output = added / tree if tree else added
+    output.mkdir(parents=True, exist_ok=True)
+    # derb's header comment names a "(null)" coding, which genrb would read.
+    text = transform('\n'.join(line for line in dump.splitlines() if not line.startswith('//')) + '\n')
+    (output / (bundle + '.txt')).write_text(text)
+    run([host / 'bin/genrb', '-s', output, '-d', output, bundle + '.txt'],
+        work, logs / 'data-bundle-genrb.log', env)
+    (output / (bundle + '.txt')).unlink()
+    return name
+
+
+def locale_index(name):
+    def transform(dump):
+        version = re.search(r'CLDRVersion \{ "([^"]+)" \}', dump)
+        locales = re.findall(r'^\s+([A-Za-z0-9_]+) \{ "" \}$', dump, re.M)
+        if not locales:
+            raise RuntimeError('No installed locales in ' + name)
+        kept = [locale for locale in locales if locale.split('_')[0] in KEEP_LANGUAGES]
+        text = 'res_index:table(nofallback) {\n'
+        if version:
+            text += '    CLDRVersion { "%s" }\n' % version.group(1)
+        return text + '    InstalledLocales {\n' + ''.join('        %s {""}\n' % locale for locale in kept) + '    }\n}\n'
+    return transform
+
+
+def without_cjk_dictionary(dump):
+    """Drop the Han, Hiragana and Katakana word dictionary from break iteration.
+
+    Without it ICU treats a run of these scripts as one word; line breaking
+    does not use the dictionary."""
+    lines = dump.splitlines()
+    kept = [line for line in lines if 'cjdict.dict' not in line]
+    if len(lines) - len(kept) != 6:
+        raise RuntimeError('Unexpected cjdict references in brkitr/root')
+    return '\n'.join(kept) + '\n'
+
+
+def filter_data(host, source, work, logs, env):
+    """Write the item lists for icupkg: removals and rebuilt bundles."""
+    filtered = work / 'data-filter'
+    if filtered.exists():
+        shutil.rmtree(filtered)
+    extracted, added = filtered / 'original', filtered / 'added'
+    for path in (extracted, added):
+        path.mkdir(parents=True)
+    package = source / 'data/in/icudt62l.dat'
+    items = subprocess.check_output([str(host / 'bin/icupkg'), '-l', str(package)],
+                                    env=env, text=True).split()
+    removed = set(name for name in items if removed_data_item(name))
+    rebuilt = []
+    for tree in LOCALE_TREES:
+        if (tree + '/' if tree else '') + 'res_index.res' in items:
+            rebuilt.append(rebuild_bundle(host, package, extracted, added, tree, 'res_index',
+                                          locale_index(tree), work, logs, env))
+    rebuilt.append(rebuild_bundle(host, package, extracted, added, 'brkitr', 'root',
+                                  without_cjk_dictionary, work, logs, env))
+    (filtered / 'add.txt').write_text('\n'.join(rebuilt) + '\n')
+    # Kept items may alias removed locales (no_NO_NY to nn_NO, for example).
+    # icupkg refuses a package with missing dependencies; restore those items.
+    restored = []
+    probe = filtered / 'probe.dat'
+    while True:
+        (filtered / 'remove.txt').write_text('\n'.join(sorted(removed)) + '\n')
+        result = subprocess.run([str(host / 'bin/icupkg'), '-r', str(filtered / 'remove.txt'),
+                                 '-s', str(added), '-a', str(filtered / 'add.txt'), str(package), str(probe)],
+                                env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        missing = set(re.findall(r'depends on missing item (\S+)', result.stdout))
+        if not result.returncode and not missing:
+            break
+        if not missing or not missing <= removed:
+            raise RuntimeError('icupkg rejected the filtered data:\n' + result.stdout)
+        removed -= missing
+        restored += sorted(missing)
+    probe.unlink()
+    return filtered, sorted(removed), rebuilt, restored
 
 
 def sha(path):
@@ -45,6 +162,8 @@ def main():
     parser.add_argument('--jobs', type=int, default=8)
     parser.add_argument('--cxx-runtime', type=Path,
                         help='pthread C++ runtime prefix from build-cxx-runtime.py')
+    parser.add_argument('--full-data', action='store_true',
+                        help='link the complete ICU data instead of the browser subset')
     args = parser.parse_args()
     build, prefix = args.build_root.resolve(), args.prefix.resolve()
     for path in (build, prefix):
@@ -108,7 +227,7 @@ def main():
     if runtime:
         env['CXXFLAGS'] += ' ' + ' '.join(runtime_flags)
         env['LDFLAGS'] = '-L' + str(runtime / 'lib')
-    configuration = {'compiler': sha(Path(env['CXX'])),
+    configuration = {'compiler': sha(Path(env['CXX'])), 'full_data': args.full_data,
                      'cflags': env['CFLAGS'], 'cxxflags': env['CXXFLAGS'],
                      'cppflags': env['CPPFLAGS'], 'prefix': str(prefix)}
     if runtime:
@@ -130,15 +249,27 @@ def main():
             logs / (directory + '-headers.log'), env)
     run(['make', '-j' + str(args.jobs)], target, logs / 'target-build.log', env)
 
-    # Swap the complete upstream package with the native host tool. genccode C
-    # output is target-neutral, unlike its host-selected object/assembly modes.
+    # Swap the upstream package with the native host tool, removing the items
+    # the browser cannot use. genccode C output is target-neutral, unlike its
+    # host-selected object/assembly modes.
     data = target / 'icudt62b.dat'
-    run([host / 'bin/icupkg', '-tb', source / 'data/in/icudt62l.dat', data],
+    data_filter = []
+    if not args.full_data:
+        filtered, removed, rebuilt, restored = filter_data(host, source, work, logs, host_env)
+        data_filter = ['-r', filtered / 'remove.txt', '-s', filtered / 'added', '-a', filtered / 'add.txt']
+    run([host / 'bin/icupkg', '-tb', *data_filter, source / 'data/in/icudt62l.dat', data],
         target, logs / 'data-swap.log', host_env)
     header = data.read_bytes()[:24]
     if header[2:4] != b'\xda\x27' or header[8:12] != bytes([1, 0, 2, 0]):
         raise RuntimeError('Expected big-endian ASCII ICU data with 16-bit UChar')
     run([host / 'bin/genccode', data.name], target, logs / 'data-code.log', host_env)
+    # A constant array goes into the code hunk, which then needs one larger
+    # contiguous block to load. Without const it gets a data hunk of its own.
+    generated = target / 'icudt62b_dat.c'
+    code = generated.read_text()
+    if code.count('\nconst struct {\n') != 1:
+        raise RuntimeError('Unexpected genccode output layout')
+    generated.write_text(code.replace('\nconst struct {\n', '\nstruct {\n'))
     run([env['CC'], '-m68020', '-O2', '-Dicudt62b_dat=icudt62_dat',
          '-I' + str(source / 'common'), '-c', 'icudt62b_dat.c', '-o', 'icudt62b.o'],
         target, logs / 'data-compile.log', env)
@@ -184,7 +315,13 @@ def main():
          '-Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r,--wrap=isatty',
          '-o', 'icu-test'], target, logs / 'probe-link.log', env)
     manifest = {'version': VERSION, 'source_url': URL, 'source_sha256': SHA256,
-                'patch_sha256': patch_hash, 'cpu': '68020', 'data_endianness': 'big',
+                'patch_sha256': patch_hash, 'cpu': '68020',
+                'data_endianness': 'big', 'data_section': 'data',
+                'data_filter': None if args.full_data else {
+                    'languages': sorted(KEEP_LANGUAGES), 'converters': sorted(KEEP_CONVERTERS),
+                    'removed_items': len(removed), 'rebuilt_bundles': rebuilt,
+                    'restored_dependencies': restored},
+                'data_bytes': data.stat().st_size,
                 'data_sha256': sha(data), 'probe': str(target / 'icu-test'),
                 'cxx_runtime': str(runtime) if runtime else None,
                 'time_source_sha256': sha(ROOT / 'Source/WTF/wtf/amigaos3/Time.c'),
