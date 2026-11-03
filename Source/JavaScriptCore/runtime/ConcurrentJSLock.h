@@ -31,8 +31,19 @@
 
 namespace JSC {
 
+#if OS(AMIGAOS3)
+// Only the mutator touches structures, symbol tables and code blocks here:
+// there is no JIT, no concurrent GC and a single GC marker (see
+// Options::recomputeDependentOptions()), so the collector runs only while the
+// world is stopped. A Lock costs two atomic libcalls, each a Forbid() and a
+// Permit(); in symbol table lookups alone they took a tenth of the time
+// Google's sign-in page spent on a key press.
+using ConcurrentJSLock = NoLock;
+using ConcurrentJSLockerImpl = NoLockLocker;
+#else
 using ConcurrentJSLock = Lock;
 using ConcurrentJSLockerImpl = LockHolder;
+#endif
 
 static_assert(sizeof(ConcurrentJSLock) == 1, "Regardless of status of concurrent JS flag, size of ConurrentJSLock is always one byte.");
 

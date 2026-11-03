@@ -39,6 +39,8 @@ public:
 
 typedef Locker<NoLock> NoLockLocker;
 
+inline void assertIsHeld(const NoLock&) { }
+
 } // namespace WTF
 
 using WTF::NoLock;

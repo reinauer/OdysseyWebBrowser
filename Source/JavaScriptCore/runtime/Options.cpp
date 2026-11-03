@@ -451,6 +451,12 @@ void Options::recomputeDependentOptions()
 #if !CPU(X86_64) && !CPU(ARM64)
     Options::useConcurrentGC() = false;
 #endif
+#if OS(AMIGAOS3)
+    // ConcurrentJSLock is a NoLock here, which is only safe while no second
+    // thread marks or compiles.
+    Options::useConcurrentGC() = false;
+    Options::numberOfGCMarkers() = 1;
+#endif
 
     if (!isARM64())
         Options::useDataIC() = false;
