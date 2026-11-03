@@ -1126,6 +1126,22 @@ JSC_DEFINE_COMMON_SLOW_PATH(slow_path_resolve_scope)
     auto& metadata = bytecode.metadata(codeBlock);
     const Identifier& ident = codeBlock->identifier(bytecode.m_var);
     JSScope* scope = callFrame->uncheckedR(bytecode.m_scope).Register::scope();
+    if (metadata.m_resolveType == ClosureVarWithVarInjectionChecks) {
+        // The interpreter comes here once an eval has added a var to one of
+        // the scopes in between (see loadActivationStructure in
+        // LowLevelInterpreter32_64.asm). Unless one of them now has a var of
+        // this name, the variable is where it was resolved statically.
+        JSScope* target = scope;
+        for (unsigned depth = metadata.m_localScopeDepth; target && depth; --depth) {
+            if (target->type() != LexicalEnvironmentType || target->getDirectOffset(vm, ident) != invalidOffset) {
+                target = nullptr;
+                break;
+            }
+            target = target->next();
+        }
+        if (target)
+            RETURN(target);
+    }
     JSObject* resolvedScope = JSScope::resolve(globalObject, scope, ident);
     // Proxy can throw an error here, e.g. Proxy in with statement's @unscopables.
     CHECK_EXCEPTION();

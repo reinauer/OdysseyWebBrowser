@@ -2418,6 +2418,18 @@ macro varInjectionCheck(slowPath)
     bbeq WatchpointSet::m_state[t0], IsInvalidated, slowPath
 end
 
+# One sloppy eval that adds a var to any function scope fires the var
+# injection watchpoint for the whole global object. Such a var becomes a
+# property of that scope's activation, which then no longer has the plain
+# activation structure. A closure variable resolved statically is therefore
+# still found in the same place as long as each scope in between has that
+# structure.
+macro loadActivationStructure(dst)
+    loadp CodeBlock[cfr], dst
+    loadp CodeBlock::m_globalObject[dst], dst
+    loadp JSGlobalObject::m_lexicalEnvironmentStructure[dst], dst
+end
+
 
 llintOpWithMetadata(op_resolve_scope, OpResolveScope, macro (size, get, dispatch, metadata, return)
 
@@ -2447,6 +2459,24 @@ llintOpWithMetadata(op_resolve_scope, OpResolveScope, macro (size, get, dispatch
         btinz t2, .resolveScopeLoop
 
     .resolveScopeLoopEnd:
+        return(CellTag, t0)
+    end
+
+    macro resolveScopeWithoutInjectedVars(slowPath)
+        loadi OpResolveScope::Metadata::m_localScopeDepth[t5], t2
+        get(m_scope, t0)
+        loadp PayloadOffset[cfr, t0, 8], t0
+        btiz t2, .resolveScopeWithoutInjectedVarsEnd
+        loadActivationStructure(t1)
+
+    .resolveScopeWithoutInjectedVarsLoop:
+        loadp JSCell::m_structureID[t0], t3
+        bpneq t3, t1, slowPath
+        loadp JSScope::m_next[t0], t0
+        subi 1, t2
+        btinz t2, .resolveScopeWithoutInjectedVarsLoop
+
+    .resolveScopeWithoutInjectedVarsEnd:
         return(CellTag, t0)
     end
 
@@ -2494,8 +2524,11 @@ llintOpWithMetadata(op_resolve_scope, OpResolveScope, macro (size, get, dispatch
 
 .rClosureVarWithVarInjectionChecks:
     bineq t0, ClosureVarWithVarInjectionChecks, .rDynamic
-    varInjectionCheck(.rDynamic)
+    varInjectionCheck(.rClosureVarAfterInjection)
     resolveScope()
+
+.rClosureVarAfterInjection:
+    resolveScopeWithoutInjectedVars(.rDynamic)
 
 .rDynamic:
     callSlowPath(_slow_path_resolve_scope)
@@ -2581,8 +2614,18 @@ llintOpWithMetadata(op_get_from_scope, OpGetFromScope, macro (size, get, dispatc
 
 .gClosureVarWithVarInjectionChecks:
     bineq t0, ClosureVarWithVarInjectionChecks, .gDynamic
-    varInjectionCheck(.gDynamic)
+    varInjectionCheck(.gClosureVarAfterInjection)
     loadVariable(get, m_scope, t2, t1, t0)
+    getClosureVar()
+
+.gClosureVarAfterInjection:
+    # resolve_scope found the first scope that has the variable. If that
+    # scope has the plain activation structure, no eval put the variable
+    # there, so it is the scope resolved statically.
+    loadVariable(get, m_scope, t2, t1, t0)
+    loadActivationStructure(t1)
+    loadp JSCell::m_structureID[t0], t3
+    bpneq t3, t1, .gDynamic
     getClosureVar()
 
 .gDynamic:
