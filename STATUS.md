@@ -160,8 +160,10 @@ native long-filename FFS DOS7 installation. Memory requirements are in
 [MEMORY.md](Tools/AmigaOS3/MEMORY.md): 256 MiB is recommended with at least
 150 MiB free at launch, and 128 MiB froze on a heavy page, measured on Zune68.
 The browser requires muimaster.library 21 and reports the version it found;
-ordinary Zune 19.81 and MUI 3.9 cannot run it. Zune68 on Aminet is built from
-`main` and reports 19.81, so users need its `mui5-dev` branch or genuine MUI 5.
+ordinary Zune 19.81 and MUI 3.9 cannot run it. Earlier Zune68 releases on
+Aminet were built from `main` and report 19.81. Zune68 Beta 2 (2026.11.02)
+reports 21.227 and ran the corpus with only its own classes, including its
+Calltips.mcc 20.12 (`fpu-corpus-zune1102-all`).
 
 On an A4000 layout (68040, 128 MiB processor-slot and 256 MiB Zorro III RAM),
 launched from a 4 KiB stack, OWB `8053c28a` visited all six corpus pages and quit
@@ -242,10 +244,15 @@ now set WinUAE's `fpu_strict=true`.
   experimental and off in this WebKit, and its CSSOM has no wrapper for layer
   rules. Such sheets are now cached like others, which brought the local
   GitHub snapshot from 109.1 to 103.4 s, but their styles still do not apply.
-- The status bar's progress text ("6495 B of 16.0 kB read") can be wider than
-  its gauge. Zune draws it without clipping, so each update overdraws the
-  previous text to the right of the gauge. Live-Internet performance has not
-  been measured.
+- Zune68 before Beta 2 drew the status bar's progress text past the gauge
+  when it was wider, so each update overdrew the previous one ("69 B of
+  0000000000ddddd" in `fpu-corpus-scopefix`). Beta 2 (2026.11.02) clips the
+  text to the gauge, as MUI 3.9 does: on the same 68040 corpus with only its
+  libraries replaced, the gauge shows "69 B of" and nothing beyond it, with
+  unchanged page times (`fpu-corpus-zune1102`). That fixture has no Lamp.mcc.
+  With all of Zune68's classes the network lamps appear and the gauge shows
+  "69 B of 69 B read" in full (`fpu-corpus-zune1102-all`).
+- Live-Internet performance has not been measured.
 - Cold browser restart persistence and quitting with active connections
   have not been established by the final browser matrix.
 - Automatic TopSites screenshots are disabled in the tested configuration

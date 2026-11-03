@@ -60,11 +60,14 @@ Runtime requirements
   16 MiB RTG RAM. On an 8-bit RTG or native Amiga screen pages are dithered
   to the colors available, and favicons and activity animations are not shown.
 - MUI 5 with muimaster.library 21 or later, including Title.mui,
-  Listtree.mcc and Calltips.mcc. Native tests use MUI 5.0-20210831
-  (21.227), and Zune68's MUI5 muimaster.library 21.227 and zunemaster.library
-  with the native MUI5 Calltips.mcc. MUI 3.8 (19.x), MUI 3.9 (20.x, no Title
-  class) and ordinary Zune68 (19.81) do not work, which includes the Zune68
-  release on Aminet at the time of writing. If the library is too old or
+  Listtree.mcc and Calltips.mcc, or Zune68 Beta 2 (2026.11.02) or later,
+  whose muimaster.library 21.227 provides these classes. Native tests use
+  MUI 5.0-20210831 (21.227), Zune68's MUI5 muimaster.library 21.227 and
+  zunemaster.library with the native MUI5 Calltips.mcc, and the page corpus
+  also passed with Zune68 Beta 2 and only its own classes. Zune68 includes
+  Lamp.mcc, which shows the network activity lamps; without it they are
+  missing. MUI 3.8 (19.x), MUI 3.9 (20.x, no Title class) and earlier
+  Zune68 releases (19.81) do not work. If the library is too old or
   missing, the browser shows a requester naming the version it found.
   Check yours with: Version muimaster.library
 - Installed picture and PNG datatypes, and normal startup datatype
