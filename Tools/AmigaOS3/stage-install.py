@@ -20,6 +20,17 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def hunk_sizes(path):
+    """Return the HUNK_HEADER size table, which stripping must not change."""
+    data = path.read_bytes()
+    if data[:4] != b'\x00\x00\x03\xf3' or data[4:8] != b'\x00\x00\x00\x00':
+        raise RuntimeError('unexpected HUNK_HEADER in '+str(path))
+    count, first, last = (int.from_bytes(data[8+4*i:12+4*i], 'big') for i in range(3))
+    if last < first or last-first+1 != count:
+        raise RuntimeError('unexpected hunk table in '+str(path))
+    return [int.from_bytes(data[20+4*i:24+4*i], 'big') for i in range(count)]
+
+
 def write_checksum(archive):
     with archive.with_name(archive.name+'.sha256').open('x') as stream:
         stream.write(digest(archive)+'  '+archive.name+'\n')
@@ -44,6 +55,10 @@ def main():
                  'pthread-sources', 'newlib-license', 'output'):
         parser.add_argument('--'+name, required=True, type=Path)
     parser.add_argument('--newlib-license-url', default=NEWLIB_URL)
+    parser.add_argument('--strip', type=Path, default=Path('/opt/amiga-16.2-20261029/bin/m68k-amigaos-strip'),
+                        help='strip for the staged OWB; the build tree keeps the symbols')
+    parser.add_argument('--keep-symbols', action='store_true',
+                        help='stage the executable with its symbol and debug hunks')
     parser.add_argument('--archive', type=Path, help='Optional deterministic ZIP; must not exist')
     parser.add_argument('--lha-archive', type=Path, help='Optional deterministic LHA; must not exist')
     args = parser.parse_args()
@@ -65,6 +80,8 @@ def main():
             parser.error('archive checksum already exists: '+str(checksum))
     if args.lha_archive and not shutil.which('lha'):
         parser.error('--lha-archive requires lha on PATH')
+    if not args.keep_symbols and not os.access(args.strip, os.X_OK):
+        parser.error('strip tool not found: '+str(args.strip))
     roots = [args.source_root, args.dependency_root, args.runtime_root, args.pthread_sources]
     for root in roots:
         if not root.is_dir():
@@ -154,6 +171,14 @@ def main():
         if digest(destination) != inputs[str(source.resolve())]:
             raise RuntimeError('input changed while staging: '+str(source))
     (bundle/'OWB').chmod(0o755)
+    unstripped = inputs[str(args.binary.resolve())]
+    if not args.keep_symbols:
+        # LoadSeg reads and discards the symbol hunks (about 8 MB); leave
+        # them in the build tree for crash addresses.
+        sizes = hunk_sizes(bundle/'OWB')
+        subprocess.run([str(args.strip), '--strip-all', str(bundle/'OWB')], check=True)
+        if hunk_sizes(bundle/'OWB') != sizes:
+            raise RuntimeError('strip changed the loaded hunks')
     for name, notice in pthread_notices.items():
         destination = bundle/'Licenses/pthread'/name
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -167,6 +192,8 @@ def main():
         'source_tracked_dirty': bool(diff),
         'inputs': inputs, 'newlib_license_url': args.newlib_license_url,
         'binary_sha256': digest(bundle/'OWB'),
+        'binary_stripped': not args.keep_symbols,
+        'unstripped_binary_sha256': unstripped,
         'files': {str(path.relative_to(bundle)): digest(path)
                   for path in sorted(bundle.rglob('*')) if path.is_file()},
         'note': 'Local installation bundle; runtime validation is bound to the binary hash.'}
