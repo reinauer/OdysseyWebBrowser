@@ -246,6 +246,21 @@ ULONG is_morphos2(void)
 	return __morphos2;
 }
 
+static void report_startup_failure(const char *text)
+{
+#if defined(__amigaos3__) || (defined(__amigaos__) && defined(__mc68000__))
+	/* Workbench starts have no console, and MUI may be what is missing. */
+	struct EasyStruct request = { sizeof(request), 0, (STRPTR)"Odyssey", (STRPTR)"%s", (STRPTR)"OK" };
+	CONST_APTR arguments[] = { text };
+
+	if(Output())
+		fprintf(stderr, "%s\n", text);
+	EasyRequestArgs(NULL, &request, NULL, arguments);
+#else
+	fprintf(stderr, "%s\n", text);
+#endif
+}
+
 #ifdef __amigaos4__
 
 ULONG open_libs(void)
@@ -525,11 +540,9 @@ void close_libs(void)
    and Zune68's usual build reports 19. */
 #define ODYSSEY_MUI_VERSION 21
 
-/* Workbench starts have no console, so this also needs a requester. */
 static void report_mui_version(void)
 {
 	char text[128];
-	struct EasyStruct request = { sizeof(request), 0, (STRPTR)"Odyssey", (STRPTR)"%s", (STRPTR)"OK" };
 	struct Library *found = OpenLibrary(MUIMASTER_NAME, 0);
 
 	if(found)
@@ -544,16 +557,14 @@ static void report_mui_version(void)
 			ODYSSEY_MUI_VERSION);
 	}
 
-	fprintf(stderr, "%s\n", text);
-	CONST_APTR arguments[] = { text };
-	EasyRequestArgs(NULL, &request, NULL, arguments);
+	report_startup_failure(text);
 }
 #else
 #define ODYSSEY_MUI_VERSION MUIMASTER_VMIN
 
 static void report_mui_version(void)
 {
-	fprintf(stderr, "Failed to open " MUIMASTER_NAME ".\n");
+	report_startup_failure("Failed to open " MUIMASTER_NAME ".");
 }
 #endif
 
@@ -561,7 +572,7 @@ ULONG open_libs(void)
 {
 	if(!(KeymapBase = OpenLibrary("keymap.library", 39)))
 	{
-		fprintf(stderr, "Failed to open keymap.library.\n");
+		report_startup_failure("Failed to open keymap.library.");
 		return FALSE;
 	}
 
@@ -573,7 +584,7 @@ ULONG open_libs(void)
 
 	if(!(IconBase = OpenLibrary("icon.library", 39)))
 	{
-		fprintf(stderr, "Failed to open icon.library.\n");
+		report_startup_failure("Failed to open icon.library.");
 		return FALSE;
 	}
 
@@ -581,13 +592,13 @@ ULONG open_libs(void)
 	// Expat is linked statically; RTG drawing uses the classic CGX ABI.
 	if (!(CyberGfxBase = OpenLibrary("cybergraphics.library", 41)))
 	{
-		fprintf(stderr, "Failed to open cybergraphics.library V41.\n");
+		report_startup_failure("Failed to open cybergraphics.library V41.\nOdyssey needs an RTG system.");
 		return FALSE;
 	}
 #else
 	if(!(ExpatBase = OpenLibrary("expat.library", 0)))
 	{
-		fprintf(stderr, "Failed to open expat.library.\n");
+		report_startup_failure("Failed to open expat.library.");
 		return FALSE;
 	}
 #endif
@@ -618,7 +629,7 @@ ULONG open_libs(void)
 
 	if(!mainSocketBase)
 	{
-		fprintf(stderr, "Failed to open bsdsocket.library. OWB requires a running TCP/IP stack.\n");
+		report_startup_failure("Failed to open bsdsocket.library.\nOdyssey needs a running TCP/IP stack.");
 		return FALSE;
 	}
 	else
@@ -714,7 +725,10 @@ Object *create_application(char *url)
 	Object *obj = NULL;
 
 	if (!locale_init())
+	{
+		report_startup_failure("Failed to open the locale.");
 		return NULL;
+	}
 
 	if(classes_init())
 	{
@@ -722,13 +736,14 @@ Object *create_application(char *url)
 		obj = (Object *) NewObject(getowbappclass(), NULL, MA_OWBBrowser_URL, (IPTR) url, TAG_DONE);
 		if (!obj)
 		{
+			report_startup_failure("Failed to create the application.\nCheck your MUI installation.");
 			methodstack_cleanup();
 			classes_cleanup();
 		}
 	}
 	else
 	{
-		fprintf(stderr, "Failed to create internal classes.\n");
+		report_startup_failure("Failed to create internal classes.\nCheck that Title.mui, Listtree.mcc and Calltips.mcc are installed.");
 		classes_cleanup();
 	}
 
@@ -915,7 +930,7 @@ int main (int argc, char* argv[])
 
 	if(!stack)
 	{
-		fprintf(stderr, "Odyssey needs %lu bytes of stack\n", __stack);
+		report_startup_failure("Not enough memory for the browser's 2 MiB stack.");
 		return 20;
 	}
 
