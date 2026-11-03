@@ -370,11 +370,17 @@ bool CSSParserImpl::consumeRuleList(CSSParserTokenRange range, RuleListType rule
     bool firstRuleValid = false;
     while (!range.atEnd()) {
         RefPtr<StyleRuleBase> rule;
+        // Without cascade layers an @layer rule is dropped, but a sheet that
+        // starts with one is still CSS. Counting it as a valid header keeps
+        // the sheet cacheable, so that each <link> to it does not parse it
+        // again. GitHub links one such sheet of 304 KB five times.
+        bool disabledLayerRule = false;
         switch (range.peek().type()) {
         case WhitespaceToken:
             range.consumeWhitespace();
             continue;
         case AtKeywordToken:
+            disabledLayerRule = !m_context.cascadeLayersEnabled && cssAtRuleID(range.peek().value()) == CSSAtRuleLayer;
             rule = consumeAtRule(range, allowedRules);
             break;
         case CDOToken:
@@ -390,7 +396,7 @@ bool CSSParserImpl::consumeRuleList(CSSParserTokenRange range, RuleListType rule
         }
         if (!seenRule) {
             seenRule = true;
-            firstRuleValid = rule;
+            firstRuleValid = rule || disabledLayerRule;
         }
         if (rule) {
             allowedRules = computeNewAllowedRules(allowedRules, rule.get());
