@@ -12,6 +12,10 @@ set(CMAKE_AR "${AMIGAOS3_TOOLCHAIN_ROOT}/bin/m68k-amigaos-ar")
 set(CMAKE_RANLIB "${AMIGAOS3_TOOLCHAIN_ROOT}/bin/m68k-amigaos-ranlib")
 set(CMAKE_C_FLAGS_INIT "-m${AMIGAOS3_CPU}")
 set(CMAKE_CXX_FLAGS_INIT "-m${AMIGAOS3_CPU}")
+# -O3 made the code about 20% larger than -O2; the code hunk is loaded whole.
+# CMake appends its own -O3 to a *_INIT value, so set the cache entries.
+set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "Flags used by the C compiler for Release builds")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "Flags used by the C++ compiler for Release builds")
 if (AMIGAOS3_RUNTIME_ROOT)
     foreach (_runtime_file include/c++/m68k-amigaos/bits/c++config.h
             include/c++/bits/amigaos3_c99_math.h
