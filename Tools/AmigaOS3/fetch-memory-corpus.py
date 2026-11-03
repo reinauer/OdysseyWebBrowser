@@ -70,6 +70,10 @@ class Corpus:
     def rewrite_tag(self, match, base):
         tag = re.sub(r'\s(?:srcset|integrity|crossorigin|imagesrcset)\s*=\s*(["\']).*?\1', '', match.group(0), flags=re.I | re.S)
         if tag[:5].lower() == '<link' and not re.search(r'rel\s*=\s*["\']?stylesheet', tag, re.I):
+            # Preloads, icons and preconnects to other hosts would reach the
+            # live site over TLS during a run; GitHub opened five connections.
+            if re.search(r'''\shref\s*=\s*["']?\s*(?:https?:)?//''', tag, re.I):
+                return ''
             return tag
         def replace(attribute):
             target = attribute.group(3).strip()
