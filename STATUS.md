@@ -217,6 +217,17 @@ slow as the software floating point build. Results and open decisions are in
 [MEMORY.md](Tools/AmigaOS3/MEMORY.md#results-of-the-changes). The native runners
 now set WinUAE's `fpu_strict=true`.
 
+Font hinting is now off and curl uses nghttp2 1.70.0 for HTTP/2. On the
+68040 corpus, OWB `99eae0e2` (`fpu-h2-corpus`) loaded the six pages in
+186.3 s instead of 204.5 s: hinting saves up to 31% on text-heavy pages, and
+HTTP/2 about 5 s of GitHub's live requests. A live page of 19 Wikimedia
+images loaded in 21.0 s instead of 29 to 30 s with two TLS handshakes
+instead of five or six (`live-h2c`). The same executable passed the HTTPS,
+WebSocket and navigation fixture (`fpu-h2-fixture`), and the curl probe
+passed (`build/amigaos3-curl-fpu/network-check-h2`). The other speed-ups that
+were measured, and why some were not adopted, are in
+[OPTIMIZATIONS.md](Tools/AmigaOS3/OPTIMIZATIONS.md).
+
 - Favicons and activity animations are not drawn at 8 bits or fewer, because
   the alpha path cannot blend with pens.
 - The fixture only tests a 24-bit screen. On it, Intuition's close, depth,
