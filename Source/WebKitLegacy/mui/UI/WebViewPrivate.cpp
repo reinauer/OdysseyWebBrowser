@@ -781,7 +781,8 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
     }
 
     BalWidget* widget = m_webView->viewWindow();
-    if (!widget->window)
+    // A hidden view has no surface; its dirty region waits for Show.
+    if (!widget->window || !widget->cr)
         return IntRect();
 
     volatile double start = 0, layout = 0, paint = 0, blit = 0, inspector = 0; //

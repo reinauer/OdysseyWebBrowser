@@ -1432,8 +1432,9 @@ DEFMMETHOD(Show)
     }
 #endif
 
-    // Window size changed
-    if(oldwidth != data->width || oldheight != data->height)
+    // Window size changed, or Hide released the surface
+    bool resized = oldwidth != data->width || oldheight != data->height;
+    if(resized || !data->view->surface)
     {
         D(kprintf("[OWBBrowser] Resizing\n"));
 
@@ -1469,8 +1470,16 @@ DEFMMETHOD(Show)
             data->view->cr = newcr;
             data->view->surface = newsurface;
 
-            MorphOSResizeEvent re = {data->width, data->height};
-            data->view->webView->onResize(re);
+            if(resized)
+            {
+                MorphOSResizeEvent re = {data->width, data->height};
+                data->view->webView->onResize(re);
+            }
+            else
+            {
+                BalRectangle all = { 0, 0, data->width, data->height };
+                data->view->webView->addToDirtyRegion(all);
+            }
         }
 
 #if ENABLE(VIDEO) && !OS(AROS) && !OS(AMIGAOS)
@@ -1574,6 +1583,19 @@ DEFMMETHOD(Hide)
 #if OS(AMIGAOS3)
     AmigaOS3DestroyPalette(data->palette);
     data->palette = NULL;
+
+    // A hidden tab keeps no 32-bit surface (1.8 MB at 800x600). Show creates
+    // a new one and repaints the whole view.
+    if(data->view->cr)
+    {
+        cairo_destroy(data->view->cr);
+        data->view->cr = NULL;
+    }
+    if(data->view->surface)
+    {
+        cairo_surface_destroy(data->view->surface);
+        data->view->surface = NULL;
+    }
 #endif
 
     if(data->autofillCalltip)
