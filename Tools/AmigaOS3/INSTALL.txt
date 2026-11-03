@@ -48,8 +48,10 @@ Runtime requirements
   If this happens, restart the browser. Heavy pages took minutes on an
   emulated 50 MHz 68030. These are WinUAE measurements, not physical
   hardware results.
-- An RTG screen with at least 24-bit depth and cybergraphics.library
-  compatibility. Native tests use Picasso96, 800x600x24 and 16 MiB RTG RAM.
+- cybergraphics.library V41, as Picasso96 and CyberGraphX provide, and an
+  RTG screen of 16 bits or more. Native tests use Picasso96, 800x600x24 and
+  16 MiB RTG RAM. On an 8-bit RTG or native Amiga screen pages are dithered
+  to the colors available, and favicons and activity animations are not shown.
 - MUI 5 with muimaster.library 21 or later, including Title.mui,
   Listtree.mcc and Calltips.mcc. Native tests use MUI 5.0-20210831
   (21.227), and Zune68's MUI5 muimaster.library 21.227 and zunemaster.library

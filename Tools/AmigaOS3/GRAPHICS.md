@@ -37,6 +37,23 @@ rejects wrapping source addresses. It allocates one row buffer per call;
 allocation failure returns zero without drawing. The buffer is initialized
 before each read because clipping can leave parts of a row untouched.
 
+## Palette and planar screens
+
+CyberGraphX does not reduce ARGB to pens, so WritePixelArray leaves a bitmap
+of 8 bits or fewer unchanged and a page stayed blank there with no error. A
+default Workbench is often 8-bit. On those screens each browser view obtains
+a color cube of pens from the screen's ColorMap when it is shown and releases
+them when it is hidden: 216 pens at 8 bits, 125, 64 and 27 at 7, 6 and 5 bits,
+and 8 at 4 bits or fewer. Where the screen has no free pen, ObtainBestPen
+returns the closest shared one. The view's offscreen bitmap takes the screen's
+depth, and its content is dithered with a 4x4 ordered matrix and written with
+WriteChunkyPixels, which handles RTG and planar bitmaps. Depths of 15 bits and
+more keep the WritePixelArray path.
+
+The alpha adapter draws nothing at these depths: pens cannot be read back as
+ARGB to blend with. Favicons and the activity animations are therefore missing
+there.
+
 ## Native verification
 
 The isolated `GraphicsTest.cpp` probe uses the production adapter. Its row
@@ -75,6 +92,11 @@ hashes are saved in `build/amigaos3-graphics-2/`. This is native guest RTG
 pixel/readback evidence, not a full-browser rendering or physical graphics
 card result. The actual favicon, icon and both animation translation units
 also compile with the production browser flags.
+
+The palette path is checked on an 8-bit RTG screen opened with shared pens.
+Cube colors must keep their exact pens at every dither threshold, mixed colors
+must keep their average, and writes to RTG and planar bitmaps must read back
+exactly and leave the rest of the bitmap untouched. All pens must be released.
 
 The integrated CMake target also passed the same 132,379 native checks
 with the October 29 SDK in `build/amigaos3-graphics-cmake/output.txt`.

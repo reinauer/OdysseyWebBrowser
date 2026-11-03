@@ -2,6 +2,7 @@
 #include <graphics/gfxbase.h>
 #include <graphics/layers.h>
 #include <graphics/regions.h>
+#include <graphics/view.h>
 #include <intuition/intuitionbase.h>
 #include <proto/cybergraphics.h>
 #include <proto/exec.h>
@@ -9,6 +10,7 @@
 #include <proto/intuition.h>
 #include <proto/layers.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "amigaos3graphics.h"
 #include "amigaos3funcs.h"
@@ -23,6 +25,123 @@ static unsigned checks;
 #define CHECK(value) do { ++checks; if (!(value)) { \
     if (failures < 20) printf("FAIL graphics line %u: %s\n", __LINE__, #value); \
     ++failures; } } while (0)
+
+static void fillARGB(UBYTE* pixels, unsigned count, UBYTE red, UBYTE green, UBYTE blue)
+{
+    for (unsigned i = 0; i < count; ++i, pixels += 4) {
+        pixels[0] = 255;
+        pixels[1] = red;
+        pixels[2] = green;
+        pixels[3] = blue;
+    }
+}
+
+static void checkPaletteColors(AmigaOS3Palette* palette, ColorMap* colorMap)
+{
+    // Cube colors stay exact at every dither threshold.
+    static const UBYTE exact[][3] = { { 0, 0, 0 }, { 255, 255, 255 }, { 255, 0, 0 },
+        { 0, 255, 0 }, { 0, 0, 255 }, { 51, 102, 153 } };
+    UBYTE source[4 * 4 * 4];
+    UBYTE pens[4 * 4];
+    ULONG rgb[3];
+    for (auto& color : exact) {
+        fillARGB(source, 16, color[0], color[1], color[2]);
+        AmigaOS3DitherARGB(palette, source, 4 * 4, pens, 4, 4, 0, 0);
+        for (unsigned i = 0; i < 16; ++i) {
+            GetRGB32(colorMap, pens[i], 1, rgb);
+            for (unsigned channel = 0; channel < 3; ++channel)
+                CHECK(rgb[channel] >> 24 == color[channel]);
+        }
+    }
+    // Between cube levels, the average over the matrix keeps the color.
+    static const UBYTE mixed[][3] = { { 40, 130, 220 }, { 128, 128, 128 }, { 3, 252, 77 } };
+    for (auto& color : mixed) {
+        fillARGB(source, 16, color[0], color[1], color[2]);
+        AmigaOS3DitherARGB(palette, source, 4 * 4, pens, 4, 4, 0, 0);
+        ULONG totals[3] = { };
+        for (unsigned i = 0; i < 16; ++i) {
+            GetRGB32(colorMap, pens[i], 1, rgb);
+            for (unsigned channel = 0; channel < 3; ++channel)
+                totals[channel] += rgb[channel] >> 24;
+        }
+        for (unsigned channel = 0; channel < 3; ++channel)
+            CHECK(abs(static_cast<int>(totals[channel] / 16) - color[channel]) <= 7);
+    }
+}
+
+static void checkPaletteWrites(AmigaOS3Palette* palette, BitMap* friendBitMap)
+{
+    enum { width = 16, height = 8, left = 3, top = 2, columns = 5, rows = 4 };
+    auto* bitmap = AllocBitMap(width, height, 8, friendBitMap ? BMF_CLEAR | BMF_DISPLAYABLE : BMF_CLEAR, friendBitMap);
+    CHECK(bitmap);
+    if (!bitmap)
+        return;
+    RastPort raster;
+    InitRastPort(&raster);
+    raster.BitMap = bitmap;
+    UBYTE image[width * height * 4];
+    for (unsigned y = 0; y < height; ++y) {
+        for (unsigned x = 0; x < width; ++x)
+            fillARGB(image + (y * width + x) * 4, 1, x * 17, y * 36, 255 - x * 17);
+    }
+    CHECK(!AmigaOS3WritePixelArrayAlpha(image, 0, 0, width * 4, &raster, 0, 0, width, height, 0xffffffffUL));
+    UBYTE expected[columns * rows];
+    AmigaOS3DitherARGB(palette, image + (top * width + left) * 4, width * 4, expected, columns, rows, left, top);
+    CHECK(AmigaOS3WritePaletteARGB(palette, image, width * 4, &raster, left, top, columns, rows) == columns * rows);
+    CHECK(!AmigaOS3WritePaletteARGB(palette, image, width * 4, &raster, 0, 0, 0, rows));
+    for (unsigned y = 0; y < height; ++y) {
+        for (unsigned x = 0; x < width; ++x) {
+            bool inside = x >= left && x < left + columns && y >= top && y < top + rows;
+            CHECK(static_cast<ULONG>(ReadPixel(&raster, x, y))
+                == (inside ? expected[(y - top) * columns + x - left] : 0));
+        }
+    }
+    FreeBitMap(bitmap);
+}
+
+// Workbench is often 8-bit, where the RTG pixel-array path writes nothing.
+static void checkPalette()
+{
+    ULONG mode = BestCModeIDTags(CYBRBIDTG_Depth, 8,
+        CYBRBIDTG_NominalWidth, 640, CYBRBIDTG_NominalHeight, 480, TAG_DONE);
+    CHECK(mode != ~0UL);
+    if (mode == ~0UL)
+        return;
+    auto* screen = OpenScreenTags(nullptr, SA_DisplayID, mode,
+        SA_Width, 640, SA_Height, 480, SA_Depth, 8, SA_SharePens, TRUE,
+        SA_Quiet, TRUE, SA_ShowTitle, FALSE, SA_Type, CUSTOMSCREEN, TAG_DONE);
+    CHECK(screen);
+    if (!screen)
+        return;
+    auto* colorMap = screen->ViewPort.ColorMap;
+    WORD freePens = colorMap->PalExtra->pe_NFree;
+    auto* palette = AmigaOS3CreatePalette(colorMap, 8);
+    CHECK(palette);
+    if (palette) {
+        CHECK(colorMap->PalExtra->pe_NFree < freePens);
+        checkPaletteColors(palette, colorMap);
+        checkPaletteWrites(palette, screen->RastPort.BitMap);
+        checkPaletteWrites(palette, nullptr);
+        AmigaOS3DestroyPalette(palette);
+    }
+    CHECK(colorMap->PalExtra->pe_NFree == freePens);
+    // A shallow screen has a smaller cube, and black and white still match.
+    palette = AmigaOS3CreatePalette(colorMap, 4);
+    CHECK(palette);
+    if (palette) {
+        UBYTE source[8] = { 255, 0, 0, 0, 255, 255, 255, 255 };
+        UBYTE pens[2];
+        ULONG rgb[3];
+        AmigaOS3DitherARGB(palette, source, 8, pens, 2, 1, 0, 0);
+        GetRGB32(colorMap, pens[0], 1, rgb);
+        CHECK(!(rgb[0] >> 24) && !(rgb[1] >> 24) && !(rgb[2] >> 24));
+        GetRGB32(colorMap, pens[1], 1, rgb);
+        CHECK(rgb[0] >> 24 == 255 && rgb[1] >> 24 == 255 && rgb[2] >> 24 == 255);
+        AmigaOS3DestroyPalette(palette);
+    }
+    CHECK(colorMap->PalExtra->pe_NFree == freePens);
+    CloseScreen(screen);
+}
 
 static void checkRows()
 {
@@ -215,6 +334,7 @@ static void checkRTG()
             FreeBitMap(bitmap);
         }
         CloseScreen(screen);
+        checkPalette();
     }
 closeLibraries:
     if (CyberGfxBase) CloseLibrary(CyberGfxBase);

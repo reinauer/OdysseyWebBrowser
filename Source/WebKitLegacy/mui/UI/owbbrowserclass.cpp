@@ -250,6 +250,10 @@ struct Data
     /* offscreen bitmap */
     struct RastPort rp_offscreen;
 #endif
+#if OS(AMIGAOS3)
+    /* pens for the offscreen bitmap on a palette or planar screen */
+    struct AmigaOS3Palette *palette;
+#endif
     ULONG dirty;
 
     /* scroll info */
@@ -1412,7 +1416,19 @@ DEFMMETHOD(Show)
             flags |= BMF_DISPLAYABLE;
         }
 
-        data->rp_offscreen.BitMap = AllocBitMap(data->width, data->height, 32, flags, obm);
+        ULONG depth = 32;
+#if OS(AMIGAOS3)
+        if(GetBitMapAttr(obm, BMA_DEPTH) <= 8)
+        {
+            depth = GetBitMapAttr(obm, BMA_DEPTH);
+            if(!data->palette)
+            {
+                data->palette = AmigaOS3CreatePalette(_screen(obj)->ViewPort.ColorMap, depth);
+            }
+        }
+#endif
+
+        data->rp_offscreen.BitMap = AllocBitMap(data->width, data->height, depth, flags, obm);
     }
 #endif
 
@@ -1555,6 +1571,10 @@ DEFMMETHOD(Hide)
         data->rp_offscreen.BitMap = NULL;
     }
 #endif
+#if OS(AMIGAOS3)
+    AmigaOS3DestroyPalette(data->palette);
+    data->palette = NULL;
+#endif
 
     if(data->autofillCalltip)
     {
@@ -1642,6 +1662,11 @@ DEFSMETHOD(OWBBrowser_Update)
 
         if(src && data->rp_offscreen.BitMap)
         {
+#if OS(AMIGAOS3)
+            if(data->palette)
+                AmigaOS3WritePaletteARGB(data->palette, src, stride, &data->rp_offscreen, data->update_x, data->update_y, data->update_width, data->update_height);
+            else
+#endif
 #if OS(AMIGAOS)
             WritePixelArray(src, data->update_x, data->update_y, stride, PIXF_A8R8G8B8, &data->rp_offscreen, data->update_x, data->update_y, data->update_width, data->update_height);
 #else
@@ -1773,6 +1798,11 @@ DEFMMETHOD(Draw)
 
                 if(src)
                 {
+#if OS(AMIGAOS3)
+                    if(data->palette)
+                        AmigaOS3WritePaletteARGB(data->palette, src, stride, &data->rp_offscreen, 0, 0, data->width, data->height);
+                    else
+#endif
 #if OS(AMIGAOS)
                     WritePixelArray(src, 0, 0, stride, PIXF_A8R8G8B8, &data->rp_offscreen, 0, 0, data->width, data->height);
 #else
@@ -1859,6 +1889,10 @@ DEFMMETHOD(Cleanup)
         FreeBitMap(data->rp_offscreen.BitMap);
         data->rp_offscreen.BitMap = NULL;
     }
+#endif
+#if OS(AMIGAOS3)
+    AmigaOS3DestroyPalette(data->palette);
+    data->palette = NULL;
 #endif
 
     if(data->autofillCalltip)
