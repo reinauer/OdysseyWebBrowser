@@ -181,14 +181,71 @@ Quitting after any page which created a `WorkQueue`, such as one with a `data:`
 URL, used to hang in the SDK's exit join with about 92 MiB still allocated. The
 earlier Quit proofs used a test page without one. Queue threads now stop at exit.
 
-- The `about:` start page draws nothing but grey on Zune68 and genuine MUI;
-  the cause has not been investigated.
+Pages used to stay blank on any screen of 8 bits or fewer, which looked like a
+fault in the `about:` page. CyberGraphX does not reduce ARGB to pens, and the
+fixture missed this because it forces a 24-bit screen. These screens now use a
+dithered pen cube, described in [GRAPHICS.md](Tools/AmigaOS3/GRAPHICS.md). OWB
+`057dd6cb`, which the archive above does not contain yet, showed `about:` on
+8-bit RTG on Zune68 and on a 16-color native screen, scrolled and quit natively on
+8-bit on genuine MUI with `RETURN=0`, and passed the 24-bit fixture from a 4 KiB
+launch. The previous build, `21383ae1`, showed `about:` on genuine MUI at 8 and 24
+bits, and the test page rendered as before at 16 and 24 bits. It differs only by
+an alpha check and one message. A true 256-color native screen was not reached:
+asking for 8 planes gave a 16-color screen. Native planar writes at 8 planes
+pass in `odyssey-graphics-test`, with 133,465 checks and no failures. Startup
+failures now show a requester. Icon starts proved this on the previous build,
+`21383ae1`, with no TCP/IP stack, no Calltips.mcc, and test patches of the binary
+which made cybergraphics.library and the stack allocation fail. The Calltips.mcc
+case was repeated on `057dd6cb`, whose text differs. Each run exited after the
+requester. Results are in `build/amigaos3-crash2`: `e1-*`, `f2`-`f5` and `g1`-`g6`.
+The failure to create the application object was not exercised.
+
+The source, not yet packaged, now builds for 68020 to 68060
+with an FPU (`-m68020-60 -m68881`) at `-O2`, with reduced ICU data, a new
+heap, smaller caches and a stripped staged executable. OWB `57f46e57` in
+`build/amigaos3-browser-fpu` needs an FPU and says so without one. It peaked at
+106.4 MiB rather than 135.5, took 15 to 43% less time per page on the
+cycle-exact 68030, passed both visits held to 128 MiB, and ran the corpus on a
+68040 with the Workbench 3.2 SetPatch and 68040.library. The page checks
+also pass on a 68060 with 68060.library. On a 68LC040 the Workbench 3.2 CPU
+libraries do not emulate the missing FPU; SoftIEEE from Aminet should, but
+that is untested and slow. An
+`-Os` build in `build/amigaos3-browser-fpu-os` saves another 17 MiB but is as
+slow as the software floating point build. Results and open decisions are in
+[MEMORY.md](Tools/AmigaOS3/MEMORY.md#results-of-the-changes). The native runners
+now set WinUAE's `fpu_strict=true`.
+
+- Favicons and activity animations are not drawn at 8 bits or fewer, because
+  the alpha path cannot blend with pens.
+- The fixture only tests a 24-bit screen. On it, Intuition's close, depth,
+  zoom and size gadgets and the scroll arrows are missing from every window,
+  including a clean Workbench 3.2 with its own Picasso96. That WinUAE build's
+  Unix RTG code runs `BlitPlanar2Direct`, but the gadgets' planar images never
+  reach the frame buffer. The same image on an 8-bit RTG or native screen
+  draws them.
 - Physical Amiga hardware and real TCP/IP stacks remain untested; current
   networking proof uses WinUAE socket emulation and controlled servers.
-- The browser stops loading silently when memory runs out; the cause has
-  not been determined. Live-Internet performance has not been measured.
-- `open_libs` failures other than MUI print only to stderr, so a Workbench
-  start ends silently if, for example, cybergraphics.library is missing.
+- When memory runs out or a fatal check fails, OWB now shows a requester
+  ("Odyssey ran out of memory and has to quit.") and exits with 20, instead
+  of stopping silently. Four 80 MiB runs on the 68040 showed the requester;
+  the last shut down normally, and one ran out of memory again during
+  shutdown and still exited. In that case MUI's application object can stay
+  behind. Caches are still released only after an allocation fails; see
+  MEMORY.md. Google's sign-in page had stopped OWB through a vtable check
+  that is now disabled. The page now loads, but on the emulated 68040 each
+  key press runs Google's script for about 20 s. Two causes of that are
+  fixed: symbol table locks that each cost two atomic library calls, and a
+  sloppy `eval` on the page that sent every closure variable read below an
+  `eval` through a full scope chain search (4.3 times slower in a `jsc`
+  loop). The key press time has not been measured again.
+- GitHub's style sheets wrapped in `@layer` are dropped: cascade layers are
+  experimental and off in this WebKit, and its CSSOM has no wrapper for layer
+  rules. Such sheets are now cached like others, which brought the local
+  GitHub snapshot from 109.1 to 103.4 s, but their styles still do not apply.
+- The status bar's progress text ("6495 B of 16.0 kB read") can be wider than
+  its gauge. Zune draws it without clipping, so each update overdraws the
+  previous text to the right of the gauge. Live-Internet performance has not
+  been measured.
 - Cold browser restart persistence and quitting with active connections
   have not been established by the final browser matrix.
 - Automatic TopSites screenshots are disabled in the tested configuration
