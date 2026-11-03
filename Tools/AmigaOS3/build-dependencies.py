@@ -16,6 +16,8 @@ import subprocess
 import tarfile
 import zipfile
 
+import amigaos3_cpu
+
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = {
     'zlib': ('1.3.1', 'https://zlib.net/fossils/zlib-1.3.1.tar.gz', '9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23'),
@@ -106,7 +108,10 @@ def main():
     p.add_argument('--file-smoke', action='store_true', help='Link the native filesystem metadata smoke')
     p.add_argument('--file-volume', default='RAM:', help='Guest volume for the filesystem smoke (RAM: or DH1:)')
     p.add_argument('packages', nargs='*', choices=list(PACKAGES))
+    amigaos3_cpu.add_argument(p)
     a = p.parse_args()
+    cpu = amigaos3_cpu.flags(a.cpu)
+    cpu_text = amigaos3_cpu.flag_string(a.cpu)
     build, prefix, toolchain = a.build_root.resolve(), a.prefix.resolve(), a.toolchain.resolve()
     for d in (build/'downloads', build/'src', build/'logs', prefix/'include', prefix/'lib/pkgconfig'):
         d.mkdir(parents=True, exist_ok=True)
@@ -116,20 +121,19 @@ def main():
         CC=str(toolchain/'bin/m68k-amigaos-gcc'), CXX=str(toolchain/'bin/m68k-amigaos-g++'),
         AR=str(toolchain/'bin/m68k-amigaos-ar'), RANLIB=str(toolchain/'bin/m68k-amigaos-ranlib'),
         NM=str(toolchain/'bin/m68k-amigaos-nm'), STRIP=str(toolchain/'bin/m68k-amigaos-strip'),
-        CFLAGS='-m68020 -O2 -D_DEFAULT_SOURCE', CXXFLAGS='-m68020 -O2 -D_DEFAULT_SOURCE',
-        CPPFLAGS=f'-I{prefix}/include', LDFLAGS=f'-m68020 -L{prefix}/lib',
+        CFLAGS=cpu_text+' -O2 -D_DEFAULT_SOURCE', CXXFLAGS=cpu_text+' -O2 -D_DEFAULT_SOURCE',
+        CPPFLAGS=f'-I{prefix}/include', LDFLAGS=f'{cpu_text} -L{prefix}/lib',
         PKG_CONFIG_LIBDIR=str(prefix/'lib/pkgconfig'), PKG_CONFIG_PATH='', PKG_CONFIG_SYSROOT_DIR='')
     runtime = (a.cxx_runtime or prefix/'cxx-runtime').resolve()
     runtime_link_flags = []
-    helper_objects = [runtime/'lib'/name for name in
-        ('floatunsidf.o', 'floatunsisf.o', 'truncdfsf2.o', 'double-math.o')]
+    helper_objects = [runtime/'lib'/name for name in amigaos3_cpu.math_helpers(a.cpu)]
     if (runtime/'lib/integer-math.o').exists():
         helper_objects.append(runtime/'lib/integer-math.o')
     requested_probes = a.smoke or a.font_smoke or a.sqlite_smoke or a.psl_smoke or a.file_smoke
     if a.probes_only and (not requested_probes or a.packages):
         raise RuntimeError('--probes-only requires probe flags and no package names')
     if requested_probes and any(not path.exists() for path in helper_objects):
-        raise RuntimeError('Rebuild the native runtime: all four compiler helper objects are required for probes')
+        raise RuntimeError('Rebuild the native runtime: its compiler helper objects are required for probes')
     if (runtime/'lib/libstdc++.a').exists():
         includes = [runtime/'include', runtime/'include/c++/m68k-amigaos', runtime/'include/c++']
         env['CXXFLAGS'] += ' -nostdinc++ ' + ' '.join('-isystem '+shlex.quote(str(d)) for d in includes)
@@ -138,15 +142,16 @@ def main():
     elif not a.probes_only and 'harfbuzz' in (a.packages or list(PACKAGES)):
         raise RuntimeError('Build the native pthread C++ runtime before HarfBuzz')
     manifest = {'compiler': subprocess.check_output([env['CC'],'--version'],text=True).splitlines()[0],
-                'cpu': '68020', 'packages': {}, 'sdk': {}}
-    manifest['sdk'][str(target/'lib/libm020/libc.a')] = sha(target/'lib/libm020/libc.a')
+                'cpu': a.cpu, 'cpu_flags': cpu, 'packages': {}, 'sdk': {}}
+    libc = Path(subprocess.check_output([env['CC'], *cpu, '-print-file-name=libc.a'], text=True).strip()).resolve()
+    manifest['sdk'][str(libc)] = sha(libc)
     manifest['build_script_sha256'] = sha(Path(__file__))
     manifest['cxx_runtime'] = {str(path):sha(path) for path in
         [runtime/'lib/libgcc.a', runtime/'lib/libstdc++.a', runtime/'lib/libsupc++.a'] + helper_objects if path.exists()}
     manifest['support_sources'] = {str(path.relative_to(ROOT)):sha(path) for path in
         [ROOT/'Source/WTF/wtf/amigaos3/Time.c', ROOT/'Source/WTF/wtf/amigaos3/Random.c']
         + list((ROOT/'Tools/AmigaOS3/dependencies').glob('*.c'))}
-    symbols = subprocess.check_output([env['NM'],str(target/'lib/libm020/libc.a')],stderr=subprocess.DEVNULL,text=True)
+    symbols = subprocess.check_output([env['NM'],str(libc)],stderr=subprocess.DEVNULL,text=True)
     if ' T ___check_fno' not in symbols:
         raise RuntimeError('SDK lacks the verified newlib DOS descriptor accessor')
     if (build/'manifest.json').exists():
@@ -159,12 +164,12 @@ def main():
             subprocess.run(command,cwd=cwd,env=env,stdout=log,stderr=subprocess.STDOUT,check=True)
 
     if not a.probes_only:
-        run([env['CC'], '-m68020', '-O2', '-c', str(ROOT/'Source/WTF/wtf/amigaos3/Time.c'), '-o', str(build/'Time.o')], build, 'native-time')
-        run([env['CC'], '-m68020', '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/dirent.c'), '-o', str(build/'dirent.o')], build, 'native-dirent')
-        run([env['CC'], '-m68020', '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/files.c'), '-o', str(build/'files.o')], build, 'native-files')
-        run([env['CC'], '-m68020', '-O2', '-c', str(ROOT/'Source/WTF/wtf/amigaos3/Random.c'), '-o', str(build/'Random.o')], build, 'native-random')
-        run([env['CC'], '-m68020', '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/inet_pton.c'), '-o', str(build/'inet_pton.o')], build, 'native-inet-pton')
-        run([env['CC'], '-m68020', '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/curl-files.c'), '-o', str(build/'curl-files.o')], build, 'native-curl-files')
+        run([env['CC'], *cpu, '-O2', '-c', str(ROOT/'Source/WTF/wtf/amigaos3/Time.c'), '-o', str(build/'Time.o')], build, 'native-time')
+        run([env['CC'], *cpu, '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/dirent.c'), '-o', str(build/'dirent.o')], build, 'native-dirent')
+        run([env['CC'], *cpu, '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/files.c'), '-o', str(build/'files.o')], build, 'native-files')
+        run([env['CC'], *cpu, '-O2', '-c', str(ROOT/'Source/WTF/wtf/amigaos3/Random.c'), '-o', str(build/'Random.o')], build, 'native-random')
+        run([env['CC'], *cpu, '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/inet_pton.c'), '-o', str(build/'inet_pton.o')], build, 'native-inet-pton')
+        run([env['CC'], *cpu, '-O2', '-c', str(ROOT/'Tools/AmigaOS3/dependencies/curl-files.c'), '-o', str(build/'curl-files.o')], build, 'native-curl-files')
         shutil.copy2(ROOT/'Tools/AmigaOS3/dependencies/include/dirent.h', prefix/'include/dirent.h')
         run([env['AR'], 'rcs', str(prefix/'lib/libodyssey-amigaos3.a'), str(build/'Time.o'), str(build/'dirent.o'), str(build/'files.o'), str(build/'Random.o'), str(build/'inet_pton.o'), str(build/'curl-files.o')], build, 'native-support')
         (prefix/'share/licenses/musl').mkdir(parents=True, exist_ok=True)
@@ -202,7 +207,7 @@ def main():
                 cmake = src/'CMakeLists.txt'
                 cmake.write_text(cmake.read_text().replace('if(UNIX\n   OR (WIN32', 'if(CMAKE_SYSTEM_PROCESSOR STREQUAL "m68k"\n   OR UNIX\n   OR (WIN32'))
             options = ['-DPNG_SHARED=OFF','-DPNG_STATIC=ON','-DPNG_TESTS=OFF','-DPNG_TOOLS=OFF'] if name == 'libpng' else ['-DCMAKE_POLICY_VERSION_MINIMUM=3.5','-DFT_DISABLE_BZIP2=ON','-DFT_DISABLE_HARFBUZZ=ON','-DFT_DISABLE_BROTLI=ON']
-            run(['cmake','-S',str(src),'-B',str(obj),'-G','Ninja',f'-DCMAKE_TOOLCHAIN_FILE={ROOT}/Source/cmake/AmigaOS3.cmake',f'-DAMIGAOS3_TOOLCHAIN_ROOT={toolchain}',f'-DAMIGAOS3_DEPENDENCY_ROOT={prefix}',f'-DCMAKE_INSTALL_PREFIX={prefix}','-DBUILD_SHARED_LIBS=OFF','-DCMAKE_BUILD_TYPE=Release']+options,obj,name+'-configure')
+            run(['cmake','-S',str(src),'-B',str(obj),'-G','Ninja',f'-DCMAKE_TOOLCHAIN_FILE={ROOT}/Source/cmake/AmigaOS3.cmake',f'-DAMIGAOS3_TOOLCHAIN_ROOT={toolchain}',f'-DAMIGAOS3_CPU_FLAGS={cpu_text}',f'-DAMIGAOS3_DEPENDENCY_ROOT={prefix}',f'-DCMAKE_INSTALL_PREFIX={prefix}','-DBUILD_SHARED_LIBS=OFF','-DCMAKE_BUILD_TYPE=Release']+options,obj,name+'-configure')
             run(['cmake','--build',str(obj),'--parallel',str(a.jobs)],obj,name+'-build')
             run(['cmake','--install',str(obj)],obj,name+'-install')
         elif name == 'pixman':
@@ -278,7 +283,7 @@ def main():
             run(['make',f'-j{a.jobs}','-C','src'],obj,name+'-build')
             run(['make','-C','src','install'],obj,name+'-install')
         elif name == 'libjpeg-turbo':
-            run(['cmake','-S',str(src),'-B',str(obj),'-G','Ninja',f'-DCMAKE_TOOLCHAIN_FILE={ROOT}/Source/cmake/AmigaOS3.cmake',f'-DAMIGAOS3_TOOLCHAIN_ROOT={toolchain}',f'-DCMAKE_INSTALL_PREFIX={prefix}','-DENABLE_SHARED=OFF','-DENABLE_STATIC=ON','-DWITH_SIMD=OFF','-DWITH_TURBOJPEG=OFF','-DCMAKE_BUILD_TYPE=Release'],obj,name+'-configure')
+            run(['cmake','-S',str(src),'-B',str(obj),'-G','Ninja',f'-DCMAKE_TOOLCHAIN_FILE={ROOT}/Source/cmake/AmigaOS3.cmake',f'-DAMIGAOS3_TOOLCHAIN_ROOT={toolchain}',f'-DAMIGAOS3_CPU_FLAGS={cpu_text}',f'-DCMAKE_INSTALL_PREFIX={prefix}','-DENABLE_SHARED=OFF','-DENABLE_STATIC=ON','-DWITH_SIMD=OFF','-DWITH_TURBOJPEG=OFF','-DCMAKE_BUILD_TYPE=Release'],obj,name+'-configure')
             run(['cmake','--build',str(obj),'--target','jpeg-static','--parallel',str(a.jobs)],obj,name+'-build')
             for component in ['lib','include']:
                 run(['cmake','--install',str(obj),'--component',component],obj,name+'-install-'+component)
@@ -293,7 +298,7 @@ def main():
                 pc.write('\nRequires.private: icu-uc\nLibs.private: -lstdc++ -lm -latomic -lpthread -lodyssey-amigaos3\n')
         elif name == 'sqlite':
             patch(src/'sqlite3.c','#if SQLITE_THREADSAFE && !defined(SQLITE_MUTEX_NOOP)', '#if SQLITE_THREADSAFE && !defined(SQLITE_MUTEX_NOOP) && !defined(SQLITE_MUTEX_PTHREADS)')
-            flags = ['-m68020','-O2','-D_DEFAULT_SOURCE','-DSQLITE_OS_OTHER=1','-DSQLITE_THREADSAFE=1','-DSQLITE_MUTEX_PTHREADS','-DSQLITE_OMIT_LOAD_EXTENSION','-DSQLITE_OMIT_WAL','-DSQLITE_TEMP_STORE=2','-DSQLITE_MAX_MMAP_SIZE=0',f'-I{src}']
+            flags = [*cpu,'-O2','-D_DEFAULT_SOURCE','-DSQLITE_OS_OTHER=1','-DSQLITE_THREADSAFE=1','-DSQLITE_MUTEX_PTHREADS','-DSQLITE_OMIT_LOAD_EXTENSION','-DSQLITE_OMIT_WAL','-DSQLITE_TEMP_STORE=2','-DSQLITE_MAX_MMAP_SIZE=0',f'-I{src}']
             run([env['CC']]+flags+['-c',str(src/'sqlite3.c'),'-o',str(obj/'sqlite3.o')],obj,name+'-build')
             run([env['CC']]+flags+['-c',str(ROOT/'Tools/AmigaOS3/dependencies/sqlite-vfs.c'),'-o',str(obj/'sqlite-vfs.o')],obj,name+'-vfs')
             run([env['AR'],'rcs',str(prefix/'lib/libsqlite3.a'),str(obj/'sqlite3.o'),str(obj/'sqlite-vfs.o')],obj,name+'-archive')
@@ -338,7 +343,7 @@ def main():
     if requested_probes:
         for unit in ('Malloc', 'TTY'):
             source = ROOT/'Source/WTF/wtf/amigaos3'/f'{unit}.c'
-            run([env['CC'], '-m68020', '-O2', '-I'+str(runtime/'include'), '-c', str(source),
+            run([env['CC'], *cpu, '-O2', '-I'+str(runtime/'include'), '-c', str(source),
                  '-o', str(build/f'probe-{unit}.o')], build, f'native-probe-{unit.lower()}')
             probe_link_flags.append(str(build/f'probe-{unit}.o'))
             manifest['support_sources'][str(source.relative_to(ROOT))] = sha(source)
@@ -347,7 +352,7 @@ def main():
         probe_link_flags.append(support_wrappers)
     if a.smoke:
         flags = subprocess.check_output(['pkg-config','--static','--cflags','--libs','cairo','libxslt'],env=env,text=True).split()
-        run([env['CC'],'-m68020','-O2',str(ROOT/'Tools/AmigaOS3/dependencies/smoke.c'),'-o',str(build/'dependency-smoke')]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3'],build,'dependency-smoke-link')
+        run([env['CC'],*cpu,'-O2',str(ROOT/'Tools/AmigaOS3/dependencies/smoke.c'),'-o',str(build/'dependency-smoke')]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3'],build,'dependency-smoke-link')
     if a.font_smoke:
         commit = 'ffebf8c1ee449e544955a7e813c54f9b73848eac'
         font_dir = prefix/'share/amigaos3/Fonts'
@@ -362,16 +367,16 @@ def main():
                 raise RuntimeError(f'{archive}: SHA256 mismatch')
             shutil.copy2(archive,font_dir/file)
         flags = subprocess.check_output(['pkg-config','--static','--cflags','--libs','harfbuzz-icu','cairo'],env=env,text=True).split()
-        run([env['CC'],'-m68020','-O2',str(ROOT/'Tools/AmigaOS3/dependencies/font-smoke.c'),'-o',str(build/'font-smoke')]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3','-lstdc++'],build,'font-smoke-link')
+        run([env['CC'],*cpu,'-O2',str(ROOT/'Tools/AmigaOS3/dependencies/font-smoke.c'),'-o',str(build/'font-smoke')]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3','-lstdc++'],build,'font-smoke-link')
     for enabled, package, source, extra in [
         (a.sqlite_smoke,'sqlite3','sqlite-smoke', [f'-DSQLITE_SMOKE_VOLUME="{a.sqlite_volume}"']),
         (a.psl_smoke,'libpsl','psl-smoke', [])]:
         if enabled:
             flags = subprocess.check_output(['pkg-config','--static','--cflags','--libs',package],env=env,text=True).split()
-            run([env['CC'],'-m68020','-O2']+extra+[str(ROOT/f'Tools/AmigaOS3/dependencies/{source}.c'),'-o',str(build/source)]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3','-lstdc++','-lm'],build,source+'-link')
+            run([env['CC'],*cpu,'-O2']+extra+[str(ROOT/f'Tools/AmigaOS3/dependencies/{source}.c'),'-o',str(build/source)]+probe_link_flags+flags+['-latomic','-lpthread','-lodyssey-amigaos3','-lstdc++','-lm'],build,source+'-link')
 
     if a.file_smoke:
-        run([env['CC'], '-m68020', '-O2', f'-DFILE_SMOKE_VOLUME="{a.file_volume}"',
+        run([env['CC'], *cpu, '-O2', f'-DFILE_SMOKE_VOLUME="{a.file_volume}"',
              str(ROOT/'Tools/AmigaOS3/dependencies/file-smoke.c'), '-o', str(build/'file-smoke')]
             + probe_link_flags + ['-L'+str(prefix/'lib'), '-lodyssey-amigaos3', '-latomic', '-lpthread'],
             build, 'file-smoke-link')

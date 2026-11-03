@@ -99,7 +99,11 @@ def main():
     config.write_text(
         "config_description=Odyssey OS3 platform test\nuse_gui=no\n"
         f"kickstart_rom_file={args.rom.resolve()}\n"
-        "cpu_model=68020\ncpu_24bit_addressing=false\ncpu_speed=max\n"
+        # WinUAE's default FPU compares by subtraction, so equal infinities
+        # differ, and ignores the FPCR rounding precision. fpu_strict fixes
+        # both and keeps the fast host FPU.
+        "cpu_model=68020\nfpu_model=68882\nfpu_strict=true\n"
+        "cpu_24bit_addressing=false\ncpu_speed=max\n"
         "cpu_compatible=false\nchipset=aga\nchipmem_size=4\n"
         f"z3mem_size={args.z3_memory}\nfastmem_size=8\nsound_output=none\n"
         f"bsdsocket_emu={'true' if args.bsdsocket else 'false'}\n"

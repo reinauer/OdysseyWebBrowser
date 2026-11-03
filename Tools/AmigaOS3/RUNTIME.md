@@ -174,8 +174,21 @@ and unordered comparisons. All six comparison entry points are supplied
 together because the SDK comparison object aliases those symbols to one
 implementation. No SDK installation files are changed.
 
-GCC's private `_fpCCR` bookkeeping is process-wide. The supported soft-float
-mode stays at default round-to-nearest with traps disabled; the SDK soft-float
+The FPU profile (`-m68020-60 -m68881`) needs none of these helper objects.
+The 68881 rounds to extended precision by default and Exec starts every task
+that way, so each WTF thread, including the main thread, sets its FPCR to
+round to nearest at double precision with traps disabled when it is
+initialized (`AmigaOS3ThreadContext::initialize`). The registers keep the
+extended exponent range, so a result overflows to infinity or underflows
+when it is stored as a double. WinUAE's default FPU compares by subtraction,
+which makes equal infinities compare unequal, and does not apply the FPCR
+rounding precision. The native runners therefore set `fpu_strict=true` (the
+"More compatible" FPU option), which fixes both and keeps the host FPU.
+WinUAE's softfloat 68882 is also exact, but slower.
+
+In the soft-float profile, GCC's private `_fpCCR` bookkeeping is
+process-wide. That mode stays at default round-to-nearest with traps
+disabled; the SDK soft-float
 `fenv.h` exposes no exception flags or alternate rounding modes. This work
 does not claim thread-local floating-point exception state. Concurrent
 arithmetic results are tested independently on four native pthreads.

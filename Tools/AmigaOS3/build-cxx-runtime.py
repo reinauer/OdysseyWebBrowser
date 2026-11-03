@@ -16,6 +16,8 @@ import shutil
 import subprocess
 import tarfile
 
+import amigaos3_cpu
+
 
 def run(arguments, *, cwd=None, env=None, log=None):
     if log:
@@ -27,7 +29,7 @@ def run(arguments, *, cwd=None, env=None, log=None):
 
 
 
-def sdk_fingerprint(toolchain):
+def sdk_fingerprint(toolchain, cpu_flags=("-m68020",)):
     """Identify the actual compiler, startup, libraries and searched headers.
 
     A release string alone is insufficient: SDK archives can be repackaged
@@ -63,14 +65,14 @@ def sdk_fingerprint(toolchain):
         files[program] = toolchain / ("bin/m68k-amigaos-" + program)
     for library in ("newlib-crt0.o", "libc.a", "libm.a", "libstubs.a",
                     "libpthread.a", "libgcc.a", "libstdc++.a", "libsupc++.a"):
-        files[library] = Path(output(cxx, "-m68020", "-print-file-name=" + library))
+        files[library] = Path(output(cxx, *cpu_flags, "-print-file-name=" + library))
     for label, path in files.items():
         if not path.is_file():
             raise SystemExit("SDK input cannot be located: " + label + " (" + str(path) + ")")
 
     include_roots = []
     for compiler, language in ((cc, "c"), (cxx, "c++")):
-        probe = subprocess.run([str(compiler), "-m68020", "-E", "-v", "-x", language, "-"],
+        probe = subprocess.run([str(compiler), *cpu_flags, "-E", "-v", "-x", language, "-"],
                                input="", text=True, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, check=True,
                                env=dict(os.environ, LC_ALL="C"))
@@ -101,7 +103,7 @@ def sdk_fingerprint(toolchain):
     identity = {
         "target": output(cc, "-dumpmachine"),
         "compiler_version": output(cc, "--version").splitlines()[0],
-        "multilib": output(cc, "-m68020", "-print-multi-directory"),
+        "multilib": output(cc, *cpu_flags, "-print-multi-directory"),
         "specs_sha256": hashlib.sha256(output(cc, "-dumpspecs").encode()).hexdigest(),
         "files": {label: {"path": name(path), "sha256": checksum(path)}
                   for label, path in sorted(files.items())},
@@ -176,6 +178,7 @@ def main():
     parser.add_argument("--build-dir", type=Path, default=Path("build/amigaos3-gthreads"))
     parser.add_argument("--prefix", type=Path, default=Path("build/amigaos3-sdk/cxx-runtime"))
     parser.add_argument("--jobs", type=int, default=8)
+    amigaos3_cpu.add_argument(parser)
     parser.add_argument("--print-sdk-fingerprint", action="store_true",
                         help="print current SDK content identity without building or changing files")
     parser.add_argument("--sdk-fingerprint",
@@ -184,9 +187,11 @@ def main():
     args.gcc_revision = args.gcc_revision or ("1e6714c8f3756fc92ec93d4a3a25a49333b5407b" if args.profile == "oct29" else "e141137a28e4c36e45c8dc9064f413ddb17099bd")
     args.pthread_revision = args.pthread_revision or ("bf81f53fe4a3f309d8ebabaa893a1c740c39b3de" if args.profile == "oct29" else "86711c70569ffc6b70ee1fb99895866c1d9f30e4")
     toolchain = args.toolchain.resolve()
-    fingerprint = sdk_fingerprint(toolchain)
+    cpu_flags = amigaos3_cpu.flags(args.cpu)
+    soft_float = amigaos3_cpu.soft_float(args.cpu)
+    fingerprint = sdk_fingerprint(toolchain, cpu_flags)
     fingerprint["requested_toolchain"] = str(args.toolchain.absolute())
-    fingerprint["runtime_profile"] = args.profile
+    fingerprint["runtime_profile"] = args.profile if soft_float else args.profile + "-" + args.cpu
     compatibility = pthread_archive_compatibility(fingerprint, args.profile)
     fingerprint["pthread_recipe_compatibility"] = compatibility
     if args.print_sdk_fingerprint:
@@ -200,7 +205,9 @@ def main():
                          + ". Profile " + args.profile + " requires "
                          + ", ".join(compatibility["expected_members"])
                          + ". No build/prefix files were changed.")
-    if args.profile == "oct29" and fingerprint["sha256"] != "047486a65ed6ae2711feedbd12187671e03edafe88d3e1c2963396b4f2f38823":
+    pinned = {"soft": "047486a65ed6ae2711feedbd12187671e03edafe88d3e1c2963396b4f2f38823",
+              "fpu": "4232fd40e97a74491fc39ceec48f65a6f296e3ac51734a2c9cab655922eaab99"}
+    if args.profile == "oct29" and fingerprint["sha256"] != pinned[args.cpu]:
         raise SystemExit("The Oct29 profile requires its pinned SDK content identity; inspect a new SDK before adding another profile")
     root = args.build_dir.resolve()
     prefix = args.prefix.resolve()
@@ -260,8 +267,9 @@ def main():
             toolchain / "m68k-amigaos/include/pthread.h").read_bytes():
         raise SystemExit("Pinned pthread header differs from the selected SDK ABI")
     pthread_members = ["pthread_key", "pthread_cond"] if args.profile == "oct29" else ["pthread"]
-    pthread_flags = (["-m68020-60", "-Os", "-fomit-frame-pointer", "-noixemul"]
-                     if args.profile == "oct29" else ["-m68020", "-O2"])
+    pthread_flags = (["-m68020-60", *([] if soft_float else ["-m68881"]),
+                      "-Os", "-fomit-frame-pointer", "-noixemul"]
+                     if args.profile == "oct29" else [*cpu_flags, "-O2"])
     pthread_objects = []
     for member in pthread_members:
         object_path = root / (member + ".o")
@@ -296,7 +304,7 @@ def main():
     for header in runtime_headers.glob("*.h"):
         shutil.copy2(header, sdk_include / header.name)
 
-    flags = "-m68020 -O2 -g0 -I" + str(sdk_include)
+    flags = " ".join(cpu_flags) + " -O2 -g0 -I" + str(sdk_include)
     environment = os.environ.copy()
     environment.update(CC=cc, CXX=cxx, AR=ar, RANLIB=ranlib,
                        NM=str(toolchain / "bin/m68k-amigaos-nm"),
@@ -335,7 +343,7 @@ def main():
         [environment["NM"], "-u", str(build / "src/c++11/chrono.o")], text=True)
     if "_clock_gettime" not in chrono_symbols:
         raise SystemExit("libstdc++ chrono object does not use the native clock")
-    if sdk_fingerprint(toolchain)["sha256"] != fingerprint["sha256"]:
+    if sdk_fingerprint(toolchain, cpu_flags)["sha256"] != fingerprint["sha256"]:
         raise SystemExit("SDK contents changed during the build; stopping before libstdc++ install. "
                          "Partial artifacts were retained; use fresh build/prefix directories.")
     run(["make", "install"], cwd=build, env=environment, log=root / "install.log")
@@ -346,10 +354,10 @@ def main():
     for name in ("tconfig.h", "coretypes.h", "tm.h", "libgcc_tm.h"):
         (libgcc / name).write_text("/* Standalone emutls: no target overrides. */\n")
     (libgcc / "tsystem.h").write_text("#include <stdlib.h>\n#include <string.h>\n")
-    run([cc, "-m68020", "-O2", "-DGTHREAD_USE_WEAK=0", "-I" + str(libgcc),
+    run([cc, *cpu_flags, "-O2", "-DGTHREAD_USE_WEAK=0", "-I" + str(libgcc),
          "-I" + str(source / "libgcc"), "-c", str(source / "libgcc/emutls.c"),
          "-o", str(libgcc / "emutls.o")])
-    original_libgcc = Path(subprocess.check_output([cc, "-m68020", "-print-libgcc-file-name"], text=True).strip())
+    original_libgcc = Path(subprocess.check_output([cc, *cpu_flags, "-print-libgcc-file-name"], text=True).strip())
     shutil.copy2(original_libgcc, prefix / "lib/libgcc.a")
     run([ar, "r", str(prefix / "lib/libgcc.a"), str(libgcc / "emutls.o")])
     run([ranlib, str(prefix / "lib/libgcc.a")])
@@ -359,7 +367,9 @@ def main():
     # consistent tested conversion semantics, as explicit objects before libc.
     # Its double-to-float wrapper also truncates through IEEEDPTieee instead
     # of using GCC's round-to-nearest-even conversion.
-    for helper in ("floatunsidf", "floatunsisf", "truncdfsf2"):
+    # FPU code performs these operations inline and keeps its results in fp0,
+    # so the software helpers below belong only to the software profile.
+    for helper in (("floatunsidf", "floatunsisf", "truncdfsf2") if soft_float else ()):
         run([cc, "-m68020", "-O2", "-D__" + helper.upper(), "-c",
              str(source / "libgcc/config/m68k/fpgnulib.c"),
              "-o", str(prefix / "lib" / (helper + ".o"))])
@@ -369,16 +379,17 @@ def main():
     # bookkeeping. The SDK comparison object aliases all six predicates,
     # so replacing only arithmetic would pull conflicting cmpdf2 symbols.
     double_sections = ("double", "floatex", "eqdf2", "nedf2", "gtdf2", "gedf2", "ltdf2", "ledf2")
-    run([cc, "-m68020", *["-DL_" + section for section in double_sections], "-c",
-         str(source / "libgcc/config/m68k/lb1sf68.S"),
-         "-o", str(prefix / "lib/double-math.o")])
+    if soft_float:
+        run([cc, "-m68020", *["-DL_" + section for section in double_sections], "-c",
+             str(source / "libgcc/config/m68k/lb1sf68.S"),
+             "-o", str(prefix / "lib/double-math.o")])
     integer_sections = ("divsi3", "modsi3", "udivsi3", "umodsi3", "mulsi3")
     # Integer sections reuse local labels when assembled together. Compile
     # them separately, then retain one explicit relocatable object for linking.
     integer_objects = []
     for section in integer_sections:
         object_path = libgcc / (section + ".o")
-        run([cc, "-m68020", "-DL_" + section, "-c",
+        run([cc, *cpu_flags, "-DL_" + section, "-c",
              str(source / "libgcc/config/m68k/lb1sf68.S"), "-o", str(object_path)])
         integer_objects.append(str(object_path))
     # mktime uses public div(), whose SDK archive member also defines the
@@ -386,7 +397,7 @@ def main():
     # that conflicting alias bundle out of otherwise fully resolved links.
     integer_div = Path(__file__).resolve().parent / "integer-div.c"
     integer_div_object = libgcc / "integer-div.o"
-    run([cc, "-m68020", "-O2", "-fno-builtin-div", "-c", str(integer_div),
+    run([cc, *cpu_flags, "-O2", "-fno-builtin-div", "-c", str(integer_div),
          "-o", str(integer_div_object)])
     integer_objects.append(str(integer_div_object))
     run([environment["LD"], "-r", *integer_objects, "-o", str(prefix / "lib/integer-math.o")])
@@ -401,7 +412,7 @@ def main():
     pthread_distribution.mkdir(parents=True, exist_ok=True)
     for name in (("pthread_key.c", "pthread_cond.c", "pthread_intern.h", "pthread.h", "debug.h", "Makefile.gcc6") if args.profile == "oct29" else ("pthread.c", "pthread.h")):
         shutil.copy2(pthread_source / "pthreads" / name, pthread_distribution / name)
-    if sdk_fingerprint(toolchain)["sha256"] != fingerprint["sha256"]:
+    if sdk_fingerprint(toolchain, cpu_flags)["sha256"] != fingerprint["sha256"]:
         raise SystemExit("SDK contents changed while installing; no new completion manifest written. "
                          "Partial artifacts were retained; use fresh build/prefix directories.")
     (prefix / "manifest.json").write_text(json.dumps({
@@ -415,9 +426,10 @@ def main():
         "pthread_revision": pthread_revision,
         "pthread_repository": "https://github.com/AmigaPorts/aros-stuff",
         "compiler": subprocess.check_output([cc, "--version"], text=True).splitlines()[0],
-        "cpu": "68020", "thread_model": "posix", "shared_ptr_lock_policy": "atomic",
+        "cpu": args.cpu, "cpu_flags": cpu_flags,
+        "thread_model": "posix", "shared_ptr_lock_policy": "atomic",
         "libgcc_rebuilt_members": ["emutls.o"],
-        "compiler_helper_objects": ["floatunsidf.o", "floatunsisf.o", "truncdfsf2.o", "double-math.o", "integer-math.o"],
+        "compiler_helper_objects": [*amigaos3_cpu.math_helpers(args.cpu), "integer-math.o"],
         "required_platform_sources": ["Source/WTF/wtf/amigaos3/Time.c", "Source/WTF/wtf/amigaos3/Malloc.c"],
         "cxx_include_directories": [str(prefix / "include/c++/m68k-amigaos"), str(prefix / "include/c++")],
         "library_directory": str(prefix / "lib"),
@@ -431,10 +443,7 @@ def main():
             "lib/libsupc++.a": prefix / "lib/libsupc++.a",
             "lib/libgcc.a": prefix / "lib/libgcc.a",
             "lib/emutls.o": prefix / "lib/emutls.o",
-            "lib/floatunsidf.o": prefix / "lib/floatunsidf.o",
-            "lib/floatunsisf.o": prefix / "lib/floatunsisf.o",
-            "lib/truncdfsf2.o": prefix / "lib/truncdfsf2.o",
-            "lib/double-math.o": prefix / "lib/double-math.o",
+            **{"lib/" + name: prefix / "lib" / name for name in amigaos3_cpu.math_helpers(args.cpu)},
             "lib/integer-math.o": prefix / "lib/integer-math.o",
             "integer-div.c": integer_div,
             "libgcc/config/m68k/lb1sf68.S": source / "libgcc/config/m68k/lb1sf68.S",

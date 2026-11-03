@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import tarfile
 
+import amigaos3_cpu
+
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = '8.23.0'
 URL = f'https://curl.se/download/curl-{VERSION}.tar.xz'
@@ -34,7 +36,9 @@ def main():
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--smoke', action='store_true')
     parser.add_argument('--probes-only', action='store_true', help='Relink the smoke probe without modifying staged libraries')
+    amigaos3_cpu.add_argument(parser)
     args = parser.parse_args()
+    cpu = amigaos3_cpu.flags(args.cpu)
     if args.probes_only and not args.smoke:
         parser.error('--probes-only requires --smoke')
     prefix, build, toolchain = (p.resolve() for p in (args.prefix, args.build_root, args.toolchain))
@@ -44,7 +48,7 @@ def main():
         if previous_manifest.get('socket_error_channel') != 'native-bsdsocket-task-owned-v1':
             parser.error('this curl build predates task-owned socket errors; rebuild it before linking the new native context helper')
     runtime = (args.cxx_runtime or prefix/'cxx-runtime').resolve()
-    math_helpers = ['floatunsidf.o', 'floatunsisf.o', 'truncdfsf2.o', 'double-math.o']
+    math_helpers = list(amigaos3_cpu.math_helpers(args.cpu))
     if (runtime/'lib/integer-math.o').exists():
         math_helpers.append('integer-math.o')
     for name in ('downloads', 'logs', 'target'):
@@ -102,10 +106,10 @@ def main():
     env = dict(os.environ)
     env.update(CC=compiler, AR=str(toolchain/'bin/m68k-amigaos-ar'),
                RANLIB=str(toolchain/'bin/m68k-amigaos-ranlib'),
-               CFLAGS='-m68020 -O2 -D_DEFAULT_SOURCE',
+               CFLAGS=' '.join(cpu)+' -O2 -D_DEFAULT_SOURCE',
                # SDK bsdsocket headers require ssize_t before inclusion.
                CPPFLAGS=f'-include unistd.h -I{prefix}/include',
-               LDFLAGS=f'-m68020 -L{runtime}/lib -L{prefix}/lib',
+               LDFLAGS=' '.join(cpu)+f' -L{runtime}/lib -L{prefix}/lib',
                LIBS='-licuuc -licudata -lstdc++ -lm -latomic -lpthread -lodyssey-amigaos3 -Wl,--wrap=getcwd,--wrap=utimes,--wrap=utime', PKG_CONFIG_PATH='',
                PKG_CONFIG_LIBDIR=str(prefix/'lib/pkgconfig'))
     if args.probes_only and not (prefix/'lib/libcurl.a').is_file():
@@ -143,7 +147,7 @@ def main():
         licenses.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source/'COPYING', licenses/'COPYING')
     if args.smoke:
-        flags = ['-m68020', '-O2']
+        flags = [*cpu, '-O2']
         for name, src in [('curl-files', ROOT/'Tools/AmigaOS3/dependencies/curl-files.c'),
                           ('amissl-context', ROOT/'Source/WebCore/platform/network/curl/AmigaOS3AmiSSL.c'),
                           ('amiga-tty', ROOT/'Source/WTF/wtf/amigaos3/TTY.c'),

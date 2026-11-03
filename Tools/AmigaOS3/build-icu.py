@@ -16,6 +16,8 @@ import subprocess
 import sys
 import tarfile
 
+import amigaos3_cpu
+
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = '62.2'
 ARCHIVE = 'icu4c-62_2-src.tgz'
@@ -164,7 +166,9 @@ def main():
                         help='pthread C++ runtime prefix from build-cxx-runtime.py')
     parser.add_argument('--full-data', action='store_true',
                         help='link the complete ICU data instead of the browser subset')
+    amigaos3_cpu.add_argument(parser)
     args = parser.parse_args()
+    cpu = amigaos3_cpu.flag_string(args.cpu)
     build, prefix = args.build_root.resolve(), args.prefix.resolve()
     for path in (build, prefix):
         if ROOT not in path.parents:
@@ -221,7 +225,7 @@ def main():
     env = dict(host_env)
     for variable, tool in [('CC', 'gcc'), ('CXX', 'g++'), ('AR', 'ar'), ('RANLIB', 'ranlib')]:
         env[variable] = str(toolbin / ('m68k-amigaos-' + tool))
-    env.update(CFLAGS='-m68020 -O2', CXXFLAGS='-m68020 -O2 -std=c++11',
+    env.update(CFLAGS=cpu + ' -O2', CXXFLAGS=cpu + ' -O2 -std=c++11',
                CPPFLAGS='-DU_HAVE_MMAP=0 -DU_HAVE_POPEN=0 -D_GNU_SOURCE',
                icu_cv_host_frag='mh-linux', ac_cv_c_bigendian='yes')
     if runtime:
@@ -270,7 +274,7 @@ def main():
     if code.count('\nconst struct {\n') != 1:
         raise RuntimeError('Unexpected genccode output layout')
     generated.write_text(code.replace('\nconst struct {\n', '\nstruct {\n'))
-    run([env['CC'], '-m68020', '-O2', '-Dicudt62b_dat=icudt62_dat',
+    run([env['CC'], *cpu.split(), '-O2', '-Dicudt62b_dat=icudt62_dat',
          '-I' + str(source / 'common'), '-c', 'icudt62b_dat.c', '-o', 'icudt62b.o'],
         target, logs / 'data-compile.log', env)
     run([env['AR'], 'rcs', 'lib/libicudata.a', 'icudt62b.o'],
@@ -293,21 +297,21 @@ def main():
 
     # Link actual data consumers; the resulting executable can be run with the
     # native guest runner. A successful link alone is not a runtime test.
-    run([env['CC'], '-m68020', '-O2', '-I' + str(ROOT / 'Source/WTF'), '-c',
+    run([env['CC'], *cpu.split(), '-O2', '-I' + str(ROOT / 'Source/WTF'), '-c',
          ROOT / 'Source/WTF/wtf/amigaos3/Time.c', '-o', 'amiga-time.o'],
         target, logs / 'probe-time.log', env)
-    run([env['CC'], '-m68020', '-O2', '-c',
+    run([env['CC'], *cpu.split(), '-O2', '-c',
          ROOT / 'Source/WTF/wtf/amigaos3/Malloc.c', '-o', 'amiga-malloc.o'],
         target, logs / 'probe-malloc.log', env)
-    run([env['CC'], '-m68020', '-O2', '-c',
+    run([env['CC'], *cpu.split(), '-O2', '-c',
          ROOT / 'Source/WTF/wtf/amigaos3/TTY.c', '-o', 'amiga-tty.o'],
         target, logs / 'probe-tty.log', env)
-    math_helpers = ('floatunsidf.o', 'floatunsisf.o', 'truncdfsf2.o', 'double-math.o')
+    math_helpers = amigaos3_cpu.math_helpers(args.cpu)
     if runtime and (runtime / 'lib/integer-math.o').exists():
         math_helpers += ('integer-math.o',)
     runtime_libraries = ([str(runtime / 'lib' / name) for name in math_helpers]
         + ['-L' + str(runtime / 'lib')]) if runtime else []
-    run([env['CXX'], '-m68020', '-O2', '-std=c++11'] + runtime_flags +
+    run([env['CXX'], *cpu.split(), '-O2', '-std=c++11'] + runtime_flags +
         ['-I' + str(prefix / 'include'),
          ROOT / 'Tools/AmigaOS3/icu-test.cpp', 'amiga-time.o', 'amiga-malloc.o', 'amiga-tty.o'] +
         runtime_libraries + ['-L' + str(prefix / 'lib'), '-licui18n', '-licuuc', '-licudata',
@@ -315,7 +319,7 @@ def main():
          '-Wl,--wrap=_malloc_r,--wrap=_free_r,--wrap=_calloc_r,--wrap=_realloc_r,--wrap=isatty',
          '-o', 'icu-test'], target, logs / 'probe-link.log', env)
     manifest = {'version': VERSION, 'source_url': URL, 'source_sha256': SHA256,
-                'patch_sha256': patch_hash, 'cpu': '68020',
+                'patch_sha256': patch_hash, 'cpu': args.cpu, 'cpu_flags': cpu.split(),
                 'data_endianness': 'big', 'data_section': 'data',
                 'data_filter': None if args.full_data else {
                     'languages': sorted(KEEP_LANGUAGES), 'converters': sorted(KEEP_CONVERTERS),

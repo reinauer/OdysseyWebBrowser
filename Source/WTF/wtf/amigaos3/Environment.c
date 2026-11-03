@@ -6,9 +6,12 @@
  */
 #include <dos/dosextens.h>
 #include <dos/var.h>
+#include <exec/execbase.h>
 #include <exec/memory.h>
+#include <intuition/intuition.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <proto/intuition.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -101,3 +104,32 @@ void odysseyAmigaOS3InitializeEnvironment(void)
 /* SDK libraries: -100; pthread setup: -6; C++ constructors: +100.
  * The SDK heap and our recursive heap wrapper initialize lazily. */
 ADD2INIT(odysseyAmigaOS3InitializeEnvironment, 0);
+
+#if defined(__HAVE_68881__)
+/* Code built with -m68881 raises a line-F exception at its first FPU
+ * instruction on a CPU without one. Stop with a message instead, before C++
+ * constructors run. The startup then runs only the exit functions whose
+ * initialization was reached, so no destructor sees an unconstructed object. */
+static void __attribute__((used)) odysseyAmigaOS3RequireFPU(void)
+{
+    if (SysBase->AttnFlags & (AFF_68881 | AFF_68882 | AFF_FPU40))
+        return;
+    static const char message[] = "This program needs a floating point unit: a 68881 or "
+                                  "68882, or a 68040 or 68060 with FPU.";
+    BPTR output = Output();
+    if (output) {
+        Write(output, (APTR)message, sizeof(message) - 1);
+        Write(output, (APTR)"\n", 1);
+    } else {
+        struct Library* IntuitionBase = OpenLibrary("intuition.library", 36);
+        if (IntuitionBase) {
+            struct EasyStruct request = { sizeof(struct EasyStruct), 0, (UBYTE*)"Odyssey",
+                                          (UBYTE*)message, (UBYTE*)"OK" };
+            EasyRequestArgs(NULL, &request, NULL, NULL);
+            CloseLibrary(IntuitionBase);
+        }
+    }
+    exit(20);
+}
+ADD2INIT(odysseyAmigaOS3RequireFPU, -50);
+#endif

@@ -11,6 +11,8 @@ from pathlib import Path
 import subprocess
 import tarfile
 
+import amigaos3_cpu
+
 ROOT = Path(__file__).resolve().parents[2]
 CURL_VERSION = '8.23.0'
 CURL_SHA256 = '8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5'
@@ -28,6 +30,7 @@ def main():
     parser.add_argument('--curl-build', type=Path, default=ROOT/'build/amigaos3-deps-curl')
     parser.add_argument('--output', type=Path, required=True,
                         help='new private directory; existing directories are rejected')
+    amigaos3_cpu.add_argument(parser)
     args = parser.parse_args()
     sdk, prefix, build, output = (p.resolve() for p in
                                   (args.toolchain, args.prefix, args.curl_build, args.output))
@@ -93,7 +96,7 @@ def main():
             raise RuntimeError(f'compiler failed; see {output / "build.log"}')
 
     cc = sdk/'bin/m68k-amigaos-gcc'
-    flags = ['-m68020', '-O2', '-D_DEFAULT_SOURCE', '-I'+str(prefix/'include')]
+    flags = [*amigaos3_cpu.flags(args.cpu), '-O2', '-D_DEFAULT_SOURCE', '-I'+str(prefix/'include')]
     support = {
         'amissl-context': ROOT/'Source/WebCore/platform/network/curl/AmigaOS3AmiSSL.c',
         'malloc': ROOT/'Source/WTF/wtf/amigaos3/Malloc.c',
@@ -103,8 +106,7 @@ def main():
     for name, path in support.items():
         run([cc, *flags, '-c', path, '-o', output/(name+'.o')])
     helpers = [runtime/'lib'/name for name in
-               ('floatunsidf.o', 'floatunsisf.o', 'truncdfsf2.o',
-                'double-math.o', 'integer-math.o')]
+               (*amigaos3_cpu.math_helpers(args.cpu), 'integer-math.o')]
     for mode in ('baseline', 'fixed'):
         definitions = ['-DSOCKET_ERRNO_PROBE_BASELINE'] if mode == 'baseline' else []
         socket_object = output/f'cf-socket-{mode}.o'

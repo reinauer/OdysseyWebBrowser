@@ -1,5 +1,102 @@
 # Matched SDK dependency profiles
 
+## FPU profile
+
+Recorded 2026-11-02. The browser is built for a 68020 to 68060 with an FPU:
+`-m68020-60 -m68881`. Floating point results are returned in `fp0`, so the
+runtime, ICU, every dependency and the browser must use the same profile;
+`Tools/AmigaOS3/amigaos3_cpu.py` holds the flags and each builder takes
+`--cpu fpu` (the default) or `--cpu soft` for the October 29 profile below.
+The SDK selects its `libm020/libm881` libraries for these flags. The software
+floating point helper objects are not built or linked.
+
+| Input or output | Path |
+| --- | --- |
+| Compiler and SDK | `/opt/amiga-16.2-20261029` |
+| Pthread C++ runtime | `build/amigaos3-sdk/cxx-runtime-fpu` |
+| All browser dependencies | `build/amigaos3-sdk-fpu` |
+| ICU objects and host tools | `build/amigaos3-icu-fpu` |
+| Graphics, fonts, XML, PSL and SQLite objects | `build/amigaos3-deps-fpu` |
+| Curl objects | `build/amigaos3-curl-fpu` |
+| Browser, `-O2` | `build/amigaos3-browser-fpu` |
+| Browser, `-Os` (for comparison) | `build/amigaos3-browser-fpu-os` |
+
+The SDK content fingerprint for these flags is
+`4232fd40e97a74491fc39ceec48f65a6f296e3ac51734a2c9cab655922eaab99`.
+
+ICU keeps 21 languages and their regional variants, the 19 converters WebKit
+opens, and drops the Chinese/Japanese word dictionary, transliteration and
+character names: 9,341,152 bytes of data instead of 25.6 MiB. The data is
+writable, so it is linked into the data hunk rather than the code hunk.
+`--full-data` restores the complete data.
+
+```sh
+python3 Tools/AmigaOS3/build-cxx-runtime.py --profile oct29 --cpu fpu \
+  --toolchain /opt/amiga-16.2-20261029 \
+  --gcc-source build/amigaos3-source-repos/gcc \
+  --pthread-source build/amigaos3-source-repos/aros-stuff \
+  --build-dir build/amigaos3-gthreads-fpu \
+  --prefix build/amigaos3-sdk/cxx-runtime-fpu
+
+python3 Tools/AmigaOS3/build-icu.py --cpu fpu \
+  --toolchain /opt/amiga-16.2-20261029 \
+  --build-root build/amigaos3-icu-fpu \
+  --prefix build/amigaos3-sdk-fpu \
+  --cxx-runtime build/amigaos3-sdk/cxx-runtime-fpu
+
+python3 Tools/AmigaOS3/build-dependencies.py --cpu fpu \
+  --toolchain /opt/amiga-16.2-20261029 \
+  --build-root build/amigaos3-deps-fpu \
+  --prefix build/amigaos3-sdk-fpu \
+  --cxx-runtime build/amigaos3-sdk/cxx-runtime-fpu
+
+python3 Tools/AmigaOS3/build-curl.py --cpu fpu \
+  --toolchain /opt/amiga-16.2-20261029 \
+  --build-root build/amigaos3-curl-fpu \
+  --prefix build/amigaos3-sdk-fpu \
+  --cxx-runtime build/amigaos3-sdk/cxx-runtime-fpu
+
+cmake -S . -B build/amigaos3-browser-fpu -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/Source/cmake/AmigaOS3.cmake" \
+  -DAMIGAOS3_TOOLCHAIN_ROOT=/opt/amiga-16.2-20261029 \
+  -DAMIGAOS3_DEPENDENCY_ROOT="$PWD/build/amigaos3-sdk-fpu" \
+  -DAMIGAOS3_RUNTIME_ROOT="$PWD/build/amigaos3-sdk/cxx-runtime-fpu" \
+  -DAMIGAOS3_PTHREAD_SOURCES="$PWD/build/amigaos3-gthreads-fpu/pthread-source/pthreads" \
+  -DAMIGAOS3_NEWLIB_LICENSE="$PWD/build/amigaos3-browser-support/COPYING.NEWLIB" \
+  -DCMAKE_BUILD_TYPE=Release -DPORT=MUI
+cmake --build build/amigaos3-browser-fpu --target OWB jsc
+```
+
+`Release` now means `-O2`; `MinSizeRel` gives `-Os`. The toolchain sets
+`AMIGAOS3_CPU_FLAGS`; the October 29 software floating point profile used
+`-m68020`.
+
+CMake turns the `-lm` in the curl, libxml2 and libxslt `.pc` files into an
+absolute path. Without help it found `m68k-amigaos/lib/libm.a`, the 68000
+soft-float library, which returns doubles in `d0/d1`; FPU code reads `fp0`.
+The first FPU OWB therefore got garbage from `pow()` and aborted in
+`MarkedSpace::sizeClasses()` while creating its JavaScript VM, and `jsc`,
+which links `-lm` through the compiler driver, did not show it.
+`AmigaOS3.cmake` now asks GCC for the multilib directory of
+`AMIGAOS3_CPU_FLAGS` and puts it on `CMAKE_LIBRARY_PATH` after the runtime and
+dependency prefixes, so `libm` resolves to `lib/libm020/libm881/libm.a` while
+zlib, libpng and FreeType still come from the dependency prefix. An existing
+build directory needs `cmake -U 'pkgcfg_lib_*' <build>` to forget the old
+paths. `pow` and `log` in OWB and `jsc` must then have the same size.
+
+`Source/WTF/wtf/amigaos3/Time.c` is also compiled into
+`libodyssey-amigaos3.a`, and OWB links that copy. After changing `Time.c`,
+rerun `build-dependencies.py`, or rebuild that one object with the
+`native-time` command from its log and replace it with `m68k-amigaos-ar rcs`,
+as was done on 2026-11-02.
+
+The dependency command above did not use `--font-smoke`, which stages the
+Noto Sans test font that `run-browser-test.py` requires. The font does not
+depend on the CPU profile; it was copied from `build/amigaos3-sdk-oct29`
+after its SHA-256 matched the values in `build-dependencies.py`.
+
+## October 29 software floating point profile
+
 Keep the original October 14 dependency prefix and runtime intact. The SDK
 symlink changed during development, and October 29's newlib changed the
 `_reent` layout from 240 to 76 bytes. Several old dependency archives also

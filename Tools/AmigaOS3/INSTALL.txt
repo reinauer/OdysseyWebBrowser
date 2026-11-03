@@ -35,7 +35,14 @@ omit it to retain automatic screenshots. TopSites history remains enabled.
 
 Runtime requirements
 
-- Motorola 68020 or later. This build uses software floating point.
+- A 68020, 68030, 68040 or 68060 with a floating point unit: a 68881 or
+  68882 next to a 68020 or 68030, or the FPU built into a full 68040 or
+  68060. The 68EC040, 68LC040, 68EC060 and 68LC060 have none and cannot run
+  this build without an FPU emulation. SoftIEEE (Aminet util/libs) provides
+  one for these and for a 68020 or 68030 without an FPU; this has not been
+  tested and will be slow. On a 68040 or 68060, install the matching
+  68040.library or 68060.library, which emulates the FPU instructions those
+  CPUs leave out.
 - AmigaOS 3 with the libraries provided by the tested AmigaOS 3.2 system.
   Earlier OS versions have not been established by the browser tests.
 - 256 MiB of fast RAM is recommended. At least 150 MiB must be free when

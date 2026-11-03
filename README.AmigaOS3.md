@@ -110,11 +110,13 @@ validate these layers.
 
 ## First native platform milestone
 
-The OS3 toolchain defaults to `/opt/amiga-16.2`, CPU 68020, and the MUI
-headers already installed in that compiler SDK. Zune68 is used as the
-runtime reference, without adding its AROS source include tree to the
-browser build. Override `AMIGAOS3_TOOLCHAIN_ROOT` or `AMIGAOS3_CPU` through
-CMake when needed.
+The OS3 toolchain defaults to `/opt/amiga-16.2`, `-m68020-60 -m68881`
+(68020 to 68060 with an FPU), and the MUI headers already installed in that
+compiler SDK. Zune68 is used as the runtime reference, without adding its
+AROS source include tree to the browser build. Override
+`AMIGAOS3_TOOLCHAIN_ROOT` or `AMIGAOS3_CPU_FLAGS` through CMake when needed;
+every object in a link, including the runtime and dependencies, must use the
+same flags.
 
 Implemented and compiled from real WTF sources:
 

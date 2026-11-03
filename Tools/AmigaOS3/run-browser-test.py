@@ -479,17 +479,31 @@ def stage(args):
             subprocess.run([str(args.xdftool.resolve()), str(disk), 'write', str(browser), 'Odyssey'],
                            check=True, stdout=log, stderr=log)
         disk_config = f'hardfile2=rw,DH1:{disk},32,1,2,512,-128,,\n'
+    # WinUAE's default FPU compares by subtraction, so equal infinities
+    # compare unequal, and it ignores the FPCR rounding precision.
+    # fpu_strict fixes both and keeps the fast host FPU.
+    # WinUAE clears fpu_model whenever it reads cpu_model, and OWB refuses to
+    # start without an FPU, so a CPU override gets its FPU back unless the
+    # options name one.
+    extra_options = list(args.uae_option)
+    keys = [option.partition('=')[0].strip() for option in extra_options]
+    if 'cpu_model' in keys:
+        last = len(keys) - 1 - keys[::-1].index('cpu_model')
+        if 'fpu_model' not in keys[last+1:]:
+            cpu = extra_options[last].partition('=')[2].strip()
+            extra_options.append('fpu_model=' + (cpu if cpu in ('68040', '68060') else '68882'))
     config.write_text(
         'config_description=Odyssey native browser RTG test\nuse_gui=no\n'
         f'kickstart_rom_file={args.rom.resolve()}\n'
-        'cpu_model=68020\ncpu_24bit_addressing=false\ncpu_speed=max\n'
+        'cpu_model=68020\nfpu_model=68882\nfpu_strict=true\n'
+        'cpu_24bit_addressing=false\ncpu_speed=max\n'
         'cpu_compatible=false\nchipset=aga\nchipmem_size=4\n'
         f'z3mem_size={args.z3_memory}\nfastmem_size={args.fast_memory}\nsound_output=none\n'
         'bsdsocket_emu=true\ngfxcard_size=16\ngfxcard_type=ZorroIII\n'
         'gfx_width_windowed=800\ngfx_height_windowed=600\n'
         f'filesystem2=rw,DH0:System:{guest},0\nuaehf0=dir,rw,DH0:System:{guest},0\n'
         + disk_config + f'debugging_features=gdbserver\ngdb_port={args.gdb_port}\n'
-        + ''.join(option+'\n' for option in args.uae_option))
+        + ''.join(option+'\n' for option in extra_options))
     inputs = {'command': command, 'desktop_omissions':omissions,
               'arguments': {key: str(value) if isinstance(value, Path) else value
                                               for key, value in vars(args).items()},

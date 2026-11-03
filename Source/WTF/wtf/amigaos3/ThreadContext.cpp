@@ -35,6 +35,12 @@ void AmigaOS3ThreadContext::initialize()
 {
     RELEASE_ASSERT(!m_task);
     m_task = FindTask(nullptr);
+#if defined(__HAVE_68881__)
+    // The FPU rounds to extended precision by default and Exec starts each
+    // task with that setting. JavaScript requires IEEE double results, so
+    // round every operation to 53 bits, to nearest, with no traps.
+    __asm__ volatile("fmove%.l %0,%!" : : "d"(0x80UL));
+#endif
 }
 
 void AmigaOS3ThreadContext::didExit()
