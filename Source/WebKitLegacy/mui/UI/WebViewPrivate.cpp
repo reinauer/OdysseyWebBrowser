@@ -895,6 +895,8 @@ static cairo_status_t writeFunction(void* output, const unsigned char* data, uns
 
 bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vector<char> *imageData)
 {
+    // The cairo context and surface are released on every path.
+    bool written = false;
     Frame* frame = core(m_webView->mainFrame());
     if (frame && frame->view())
     {
@@ -927,7 +929,7 @@ bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vec
 
                     cairo_surface_write_to_png_stream(surface, writeFunction, imageData);
 
-                    return true;
+                    written = true;
                 }
 
                 cairo_destroy(cr);
@@ -937,11 +939,13 @@ bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vec
         }
     }
         
-    return false;
+    return written;
 }
 
 bool WebViewPrivate::screenshot(String& path)
 {
+    // The cairo context and surface are released on every path.
+    bool written = false;
     Frame* frame = core(m_webView->mainFrame());
     if (frame && frame->view())
     {
@@ -970,7 +974,7 @@ bool WebViewPrivate::screenshot(String& path)
                     
                     cairo_surface_write_to_png(surface, path.utf8().data());
 
-                    return true;
+                    written = true;
                 }
 
                 cairo_destroy(cr);
@@ -980,7 +984,7 @@ bool WebViewPrivate::screenshot(String& path)
         }
     }
         
-    return false;
+    return written;
 }
 
 bool WebViewPrivate::onKeyDown(BalEventKey event)
