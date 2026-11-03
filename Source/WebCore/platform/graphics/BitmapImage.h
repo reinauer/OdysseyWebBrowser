@@ -216,7 +216,11 @@ private:
     void dump(WTF::TextStream&) const override;
 
     // Animated images over a certain size are considered large enough that we'll only hang on to one frame at a time.
+#if OS(AMIGAOS3)
+    static const unsigned LargeAnimationCutoff = 2 * 1024 * 1024;
+#else
     static const unsigned LargeAnimationCutoff = 30 * 1024 * 1024;
+#endif
 
     mutable Ref<ImageSource> m_source;
 

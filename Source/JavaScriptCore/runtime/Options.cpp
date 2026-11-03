@@ -370,6 +370,12 @@ static void overrideDefaults()
     Options::numberOfFTLCompilerThreads() = 2;
 #endif
 
+#if OS(AMIGAOS3)
+    // Without virtual memory, each VM's CLoop stack is allocated and zeroed in
+    // full when the VM is created. 1 MB still allows thousands of frames.
+    Options::maxPerThreadStackUsage() = 1 * MB;
+#endif
+
 #if USE(BMALLOC_MEMORY_FOOTPRINT_API)
     // On iOS and conditionally Linux, we control heap growth using process memory footprint. Therefore these values can be agressive.
     Options::smallHeapRAMFraction() = 0.8;

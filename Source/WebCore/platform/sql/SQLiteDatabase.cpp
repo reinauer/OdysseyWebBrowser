@@ -146,6 +146,11 @@ bool SQLiteDatabase::open(const String& filename, OpenMode openMode)
         SQLiteTransactionInProgressAutoCounter transactionCounter;
         if (!executeCommand("PRAGMA temp_store = MEMORY;"_s))
             LOG_ERROR("SQLite database could not set temp_store to memory");
+#if OS(AMIGAOS3)
+        // The default page cache grows to about 2 MB per connection.
+        if (!executeCommand("PRAGMA cache_size = -128;"_s))
+            LOG_ERROR("SQLite database could not set cache_size");
+#endif
     }
 
     if (openMode != OpenMode::ReadOnly)

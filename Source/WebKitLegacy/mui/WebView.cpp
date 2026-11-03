@@ -588,6 +588,10 @@ void WebView::setCacheModel(WebCacheModel cacheModel)
 
         cacheMinDeadCapacity = cacheTotalCapacity / 8;
         cacheMaxDeadCapacity = cacheTotalCapacity / 4;
+#if OS(AMIGAOS3)
+        // Release decoded images of resources no page uses after 15 s.
+        deadDecodedDataDeletionInterval = 15_s;
+#endif
 
         break;
     }
