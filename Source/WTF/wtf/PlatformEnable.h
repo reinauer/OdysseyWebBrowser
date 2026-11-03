@@ -849,7 +849,10 @@
 #define ENABLE_EXTRA_CTI_THUNKS 1
 #endif
 
-#if !defined(ENABLE_BINDING_INTEGRITY) && !OS(WINDOWS)
+/* The check compares an object's vtable pointer with the vtable symbol. The
+   classic AmigaOS linker keeps duplicate vtable copies, so a correct object
+   can point to a different copy (AbortSignal on Google's sign-in page). */
+#if !defined(ENABLE_BINDING_INTEGRITY) && !OS(WINDOWS) && !OS(AMIGAOS3)
 #define ENABLE_BINDING_INTEGRITY 1
 #endif
 
