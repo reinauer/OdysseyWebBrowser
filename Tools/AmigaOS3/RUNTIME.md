@@ -278,7 +278,8 @@ configuration. It takes 256 KiB segments and larger single blocks from
 `AllocMem(MEMF_ANY)`, each with a 16-byte list header so that exit can return
 all of them, and gives empty segments back to Exec. A recursive Exec
 semaphore, initialized without allocation, serializes every call.
-`amigaos3AlignedAlloc` backs `fastAlignedMalloc`.
+`amigaos3AlignedAlloc` backs `fastAlignedMalloc`, and the
+`IsoAlignedMemoryAllocator` frees its blocks individually.
 
 The native malloc alignment also falls below WebKit's assumed eight-byte
 minimum. OS3 `PreciseAllocation` records the exact adjustment to a 16-byte

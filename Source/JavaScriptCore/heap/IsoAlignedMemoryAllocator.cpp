@@ -39,7 +39,10 @@ IsoAlignedMemoryAllocator::IsoAlignedMemoryAllocator(CString name)
 
 IsoAlignedMemoryAllocator::~IsoAlignedMemoryAllocator()
 {
-#if !ENABLE(MALLOC_HEAP_BREAKDOWN)
+#if OS(AMIGAOS3)
+    for (void* block : m_blockIndices.keys())
+        fastAlignedFree(block);
+#elif !ENABLE(MALLOC_HEAP_BREAKDOWN)
     for (unsigned i = 0; i < m_blocks.size(); ++i) {
         void* block = m_blocks[i];
         if (!m_committed.quickGet(i))
@@ -58,6 +61,16 @@ void* IsoAlignedMemoryAllocator::tryAllocateAlignedMemory(size_t alignment, size
 
 #if ENABLE(MALLOC_HEAP_BREAKDOWN)
     return m_debugHeap.memalign(MarkedBlock::blockSize, MarkedBlock::blockSize, true);
+#elif OS(AMIGAOS3)
+    // Without virtual memory a decommitted block still occupies RAM, and a
+    // block kept for one type cannot serve another. Return freed blocks to
+    // the heap; this gives up the type separation of IsoSubspace.
+    void* result = tryFastAlignedMalloc(MarkedBlock::blockSize, MarkedBlock::blockSize);
+    if (!result)
+        return nullptr;
+    Locker locker { m_lock };
+    m_blockIndices.add(result, 0);
+    return result;
 #else
     Locker locker { m_lock };
     
@@ -86,6 +99,12 @@ void IsoAlignedMemoryAllocator::freeAlignedMemory(void* basePtr)
 {
 #if ENABLE(MALLOC_HEAP_BREAKDOWN)
     m_debugHeap.free(basePtr);
+#elif OS(AMIGAOS3)
+    {
+        Locker locker { m_lock };
+        RELEASE_ASSERT(m_blockIndices.remove(basePtr));
+    }
+    fastAlignedFree(basePtr);
 #else
     Locker locker { m_lock };
     
