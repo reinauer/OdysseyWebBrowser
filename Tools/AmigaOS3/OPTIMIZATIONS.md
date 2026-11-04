@@ -77,6 +77,51 @@ relocating the executable. That is inferred from the memory log only.
   GitHub's 2.5 MB of style sheets dominate its page time.
 - Faster launch: confirm first where the 16 to 25 seconds go.
 
+## Third-party libraries
+
+Reviewed on 2026-11-03 to see whether the libraries would repay a closer
+look for memory or speed. Apart from what has already been done, they would
+not:
+
+- **Code.** In the `-O3` build, libxml2, libxslt, SQLite, libstdc++, cairo,
+  FreeType, curl, pixman and the image decoders took 4.7 MiB of the 84.7 MiB
+  code hunk ([MEMORY.md](MEMORY.md)). The `-O2` executable's hunks now take
+  59.4 MiB. `build-dependencies.py` builds the libraries at `-O2` with the
+  selected CPU flags and configures their unused features out. nghttp2 added
+  180 KB. The one large part, the ICU data, is already down from 25.6 to
+  9.0 MiB.
+- **Time.** The GitHub snapshot's main-task profile (68040,
+  `fast-fpu-a4000-ghprof2`, 2,416 samples, hinting still on) gives:
+
+  | Library | Share of the main task |
+  | --- | ---: |
+  | FreeType | 2.6% |
+  | SQLite | 1.1% |
+  | cairo | 0.3% |
+  | pixman | 0.3% |
+  | ICU | 0.1% |
+
+  On the 68030 corpus profile FreeType took 9.4% and cairo 2.7%. That profile
+  was taken before hinting was turned off and before the FPU build. Halving
+  any one library would now save 1 to 2%.
+- **Already done.** Two library costs stood out: FreeType hinting and the
+  AmiSSL handshakes. Hinting off (1) and HTTP/2 (5) addressed them. Some of
+  MEMORY.md's runtime-heap findings were also about libraries, and those are
+  fixed too:
+  - SQLite's page cache is limited to 128 KiB per connection.
+  - A hidden view releases its cairo surface.
+  - The `screenshot()` surface leak is fixed.
+  - An Exec memory handler releases caches when memory runs out
+    ([RUNTIME.md](RUNTIME.md)).
+- **malloc and free.** dlmalloc 2.8.6 had already replaced the SDK heap when
+  the GitHub profile was taken. Even so, malloc and free took 9.2% of the main
+  task. The 8.9% of the 68030 profile was with the SDK heap, on other pages
+  and another CPU, so the two do not compare. Every call also obtains an Exec
+  semaphore. Nobody has traced which callers make the
+  allocations. Doing so would show whether the lever is fewer allocations in
+  WebKit's CSS and string code (see "Less CSS work" above) or a faster
+  allocator.
+
 ## Results
 
 All corpus runs: 68040 (`cpu_model=68040`, A4000 chipset, `cpu_speed=max`),
